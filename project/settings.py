@@ -64,6 +64,7 @@ DEBUG = True
 ALLOWED_HOSTS = ['*']
 
 CORS_ALLOWED_ORIGINS = [
+    "https://mobile-django-app.onrender.com",
     "http://localhost:8000",
     "http://10.0.2.2:8000",
     "http://192.168.1.179:8000" ,
@@ -97,6 +98,7 @@ INSTALLED_APPS = [
 
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
