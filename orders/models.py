@@ -1,7 +1,13 @@
 from django.db import models
 from addresses.models import Address
+from authentification.models import User
 from customers.models import Customer
 from products.models import Product
+
+
+
+
+
 
 class Order(models.Model):
     STATUS_CHOICES = [
@@ -17,6 +23,8 @@ class Order(models.Model):
     ]
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_orders')  # Utilisateur qui gère la commande (administrateur, employé)
+
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     creation_date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='UNCONFIRMED')
@@ -42,3 +50,13 @@ class OrderProduct(models.Model):
     def __str__(self):
         return f"{self.product.name} x{self.quantity}"
     
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)  # Lien vers l'utilisateur qui gère les commandes
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, null=True, blank=True)  # Lien vers la commande
+
+    def __str__(self):
+        return f"Notification pour {self.user} - {self.title}"

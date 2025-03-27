@@ -149,6 +149,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'project.wsgi.application'
 
 
+# settings.py
+
+PUSHER_BEAMS_INSTANCE_ID = '578cdb56-625d-4b55-810a-71fb27bbef7b'  # Remplacez par votre Instance ID
+PUSHER_BEAMS_SECRET_KEY = '05CA0725529F00294B620579EF25F3C38A0C7E4E3243B019F0E7065DF2FD4628'  # Remplacez par votre Secret Key
+ 
+
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
