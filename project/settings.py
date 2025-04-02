@@ -92,6 +92,8 @@ INSTALLED_APPS = [
     'addresses',
     'customers',
     'authentification',
+    'notification',
+    
 
     
     
@@ -133,7 +135,7 @@ ROOT_URLCONF = 'project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'orders/static')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -149,10 +151,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'project.wsgi.application'
 
 
-# settings.py
 
-PUSHER_BEAMS_INSTANCE_ID = '578cdb56-625d-4b55-810a-71fb27bbef7b'  # Remplacez par votre Instance ID
-PUSHER_BEAMS_SECRET_KEY = '05CA0725529F00294B620579EF25F3C38A0C7E4E3243B019F0E7065DF2FD4628'  # Remplacez par votre Secret Key
+
+PUSHER_BEAMS_INSTANCE_ID = '578cdb56-625d-4b55-810a-71fb27bbef7b' 
+PUSHER_BEAMS_SECRET_KEY = '05CA0725529F00294B620579EF25F3C38A0C7E4E3243B019F0E7065DF2FD4628'  
  
 
 # Database
@@ -203,7 +205,7 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]  
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'orders/static')]  
 MEDIA_URL = '/media/' 
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media') 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

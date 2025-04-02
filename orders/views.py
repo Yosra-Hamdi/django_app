@@ -1,5 +1,7 @@
 from django.shortcuts import render
-from .models import Order, Notification
+from .models import Order
+from notification.models import Notification
+
 from django.shortcuts import render, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -7,27 +9,15 @@ from django.views.decorators.http import require_POST
 
 
 
-def order_dashboard(request):
-    orders = Order.objects.all().order_by('-creation_date')
-    notifications = Notification.objects.all().order_by('-created_at')
+
+def dashboard_view(request):
     return render(request, 'orders/dashboard.html', {
-        'orders': orders,
-        'notifications': notifications,
+        'PUSHER_BEAMS_INSTANCE_ID': '578cdb56-625d-4b55-810a-71fb27bbef7b'  # À passer au template
     })
-
-def order_detail(request, order_id):
-    order = get_object_or_404(Order, id=order_id)
-    return render(request, 'orders/order_detail.html', {'order': order})
-
-
-
-@require_POST
-
-def mark_notification_as_read(request, notification_id):
-    notification = get_object_or_404(Notification, id=notification_id)
-    notification.is_read = True
-    notification.save()
-    return JsonResponse({
-        'success': True,
-        'order_id': notification.order.id if notification.order else None
+def order_details_view(request):
+    return render(request, 'orders/order_details.html', {
+        'PUSHER_BEAMS_INSTANCE_ID': '578cdb56-625d-4b55-810a-71fb27bbef7b'  # À passer au template
     })
+def notification_count(request):
+    count = Notification.objects.filter(user=request.user, read=False).count()
+    return JsonResponse({'count': count})

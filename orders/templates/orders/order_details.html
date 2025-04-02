@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Détails de Commande</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .address-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .address-card {
+            flex: 1;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .products-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .products-table th, .products-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .products-table th {
+            background-color: #f2f2f2;
+        }
+        .summary-card {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-UNCONFIRMED { background-color: #ff9800; color: white; }
+        .status-CONFIRMED { background-color: #2196f3; color: white; }
+        .status-PAID { background-color: #4caf50; color: white; }
+        .status-DELIVERED { background-color: #607d8b; color: white; }
+        .status-CANCELLED { background-color: #f44336; color: white; }
+        .back-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 8px 16px;
+            background: #2c3e50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- En-tête -->
+        <div class="order-header">
+            <h1>Commande #<span id="orderId"></span></h1>
+            <div>
+                <p>Date: <span id="orderDate"></span></p>
+                <p>Statut: <span id="orderStatus"></span></p>
+                <p>Paiement: <span id="paymentMethod"></span></p>
+            </div>
+        </div>
+
+        <!-- Section Client -->
+        <h2>Client</h2>
+        <div id="customerInfo"></div>
+
+        <!-- Adresses -->
+        <h2>Adresses</h2>
+        <div class="address-section">
+            <div class="address-card">
+                <h3>Livraison</h3>
+                <div id="deliveryAddress"></div>
+            </div>
+            <div class="address-card">
+                <h3>Facturation</h3>
+                <div id="billingAddress"></div>
+            </div>
+        </div>
+
+        <!-- Produits -->
+        <h2>Produits</h2>
+        <table class="products-table">
+            <thead>
+                <tr>
+                    <th>Produit</th>
+                    <th>Prix unitaire</th>
+                    <th>Quantité</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody id="productsList">
+                <!-- Rempli dynamiquement -->
+            </tbody>
+        </table>
+
+        <!-- Récapitulatif -->
+        <div class="summary-card">
+            <h2>Récapitulatif</h2>
+            <p>Total: <strong><span id="totalAmount"></span></strong></p>
+        </div>
+
+        <a href="/dashboard.html" class="back-btn">Retour au tableau de bord</a>
+    </div>
+
+    <script>
+        // Récupère l'ID de commande depuis l'URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('id');
+
+        // Fonction pour formater une date
+        function formatDate(dateString) {
+            const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            return new Date(dateString).toLocaleDateString('fr-FR', options);
+        }
+
+        // Fonction pour formater une adresse
+        function formatAddress(address) {
+            return `
+                <p>${address.street}</p>
+                <p>${address.postalCode} ${address.city}</p>
+                <p>${address.country}</p>
+            `;
+        }
+
+        // Charge les détails de la commande
+        function loadOrderDetails() {
+            const query = `
+                query GetOrder($id: ID!) {
+                    order(id: $id) {
+                        id
+                        creationDate
+                        status
+                        paymentMethod
+                        totalAmount
+                        customer {
+                            firstName
+                            lastName
+                            phone
+                        }
+                        deliveryAddress {
+                            street
+                            postalCode
+                            city
+                            country
+                        }
+                        billingAddress {
+                            street
+                            postalCode
+                            city
+                            country
+                        }
+                        products {
+                            quantity
+                            product {
+                                name
+                                price
+                            }
+                        }
+                    }
+                }
+            `;
+
+            fetch('/graphql/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query,
+                    variables: { id: orderId }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const order = data.data.order;
+                
+                // Affiche les informations de base
+                document.getElementById('orderId').textContent = order.id;
+                document.getElementById('orderDate').textContent = formatDate(order.creationDate);
+                document.getElementById('orderStatus').innerHTML = 
+                    `<span class="status-badge status-${order.status}">${order.status}</span>`;
+                document.getElementById('paymentMethod').textContent = order.paymentMethod;
+                document.getElementById('totalAmount').textContent = `${order.totalAmount.toFixed(2)} €`;
+
+                // Affiche les informations client
+                const customer = order.customer;
+                document.getElementById('customerInfo').innerHTML = `
+                    <p><strong>${customer.firstName} ${customer.lastName}</strong></p>
+                    <p>Téléphone: ${customer.phone}</p>
+                `;
+
+                // Affiche les adresses
+                document.getElementById('deliveryAddress').innerHTML = formatAddress(order.deliveryAddress);
+                document.getElementById('billingAddress').innerHTML = formatAddress(order.billingAddress);
+
+                // Affiche les produits
+                const productsList = document.getElementById('productsList');
+                productsList.innerHTML = '';
+                order.products.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.product.name}</td>
+                        <td>${item.product.price.toFixed(2)} €</td>
+                        <td>${item.quantity}</td>
+                        <td>${(item.product.price * item.quantity).toFixed(2)} €</td>
+                    `;
+                    productsList.appendChild(row);
+                });
+            })
+            .catch(error => {
+                console.error('Erreur:', error);
+                alert('Impossible de charger les détails de la commande');
+            });
+        }
+
+        // Au chargement de la page
+        if (orderId) {
+            loadOrderDetails();
+        } else {
+            alert('Aucune commande spécifiée');
+            window.location.href = '/dashboard.html';
+        }
+    </script>
+</body>
+</html>

@@ -14,6 +14,8 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from graphql import GraphQLError
+
+from authentification.models import User
 from .utils import send_password_reset_email  # Importez la fonction utilitaire
 
 class UserType(DjangoObjectType):
@@ -24,7 +26,7 @@ class UserType(DjangoObjectType):
 
 class CreateUser(graphene.Mutation):
     user = graphene.Field(UserType)
-
+    message = graphene.String()
     class Arguments:
         first_name = graphene.String(required=True)
         last_name = graphene.String(required=True)
@@ -32,18 +34,34 @@ class CreateUser(graphene.Mutation):
         password = graphene.String(required=True)
         phone = graphene.String(required=True)
         store_name = graphene.String(required=True)
+        username = graphene.String(required=False)
 
-    def mutate(self, info, first_name, last_name, email, password, phone, store_name):
-        user = get_user_model()(
+    def mutate(self, info, first_name, last_name, email, password, phone, store_name ,username=None):
+
+        user = get_user_model()
+         # Générer un username unique si non fourni
+        if not username:
+            base_username = email.split('@')[0]
+            username = base_username
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{base_username}{counter}"
+                counter += 1
+        if User.objects.filter(email=email).exists():
+            raise Exception("Cet e-mail est déjà utilisé. Veuillez en choisir un autre.")
+
+
+        user = User(
             first_name=first_name,
             last_name=last_name,
             email=email,
+            username=username,  # Ajouter un username unique
             phone=phone,
             store_name=store_name,
         )
         user.set_password(password)
         user.save()
-        return CreateUser(user=user)
+        return CreateUser(user=user , message="Compte créé avec succès !")
 
 
 
@@ -163,19 +181,6 @@ class ResendResetCode(graphene.Mutation):
             raise GraphQLError(f"Erreur lors de l'envoi de l'email : {str(e)}")
 
         return ResendResetCode(success=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

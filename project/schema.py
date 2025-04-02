@@ -1,5 +1,5 @@
 import graphene
-import orders.schema , products.schema ,authentification.schema,   customers.schema ,addresses.schema 
+import orders.schema , products.schema ,authentification.schema,   customers.schema ,addresses.schema   , notification.schema
 
 
 
@@ -9,6 +9,7 @@ class Query(
       customers.schema.Query,
       addresses.schema.Query,
       authentification.schema.Query,
+      notification.schema.Query,
       
 
       graphene.ObjectType):
@@ -18,6 +19,8 @@ class Mutation(
      products.schema.Mutation,
      orders.schema.Mutation,
      authentification.schema.Mutation,
+     notification.schema.Mutation,
+
      graphene.ObjectType):
     
     

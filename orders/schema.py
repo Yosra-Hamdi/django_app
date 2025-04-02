@@ -6,7 +6,7 @@ from authentification.models import User
 from customers.models import Customer
 from products.models import Product
 from addresses.models import Address
-from .models import Notification, Order, OrderProduct
+from .models import  Order, OrderProduct
 from graphql import GraphQLError
 from .beams_config import beams_client
 
@@ -43,24 +43,12 @@ class OrderType(DjangoObjectType):
     def resolve_total_amount(self, info):
         return self.calculate_total()
 
-# Type GraphQL pour Notification
-class NotificationType(DjangoObjectType):
-    order_id = graphene.Int()  
-
-    class Meta:
-        model = Notification
-        fields = ("id", "title", "body", "is_read", "created_at" )
-
-    def resolve_order_id(self, info):
-        return self.order.id if self.order else None  
-    
-    
 
 # Requêtes GraphQL
 class Query(graphene.ObjectType):
     orders = graphene.List(OrderType)
     order = graphene.Field(OrderType, id=graphene.ID(required=True))
-    notifications = graphene.List(NotificationType)
+   
 
     def resolve_orders(root, info):
         return Order.objects.all()
@@ -71,12 +59,7 @@ class Query(graphene.ObjectType):
         except Order.DoesNotExist:
             raise GraphQLError("Commande non trouvée.")
         
-    def resolve_notifications(root, info):
-        user = info.context.user 
-        if not user.is_authenticated:
-            raise GraphQLError("Authentification requise.")
-        return Notification.objects.filter(user=user).order_by('-created_at')    
-  
+   
 
    
 # Input pour les produits
@@ -185,27 +168,7 @@ class CreateOrder(graphene.Mutation):
 
         # Calculer le montant total après ajout des produits
         order.calculate_total()
-        admin_user = User.objects.get(username="admin")
-         # Enregistrer la notification pour l'admin
-        Notification.objects.create(
-            user=admin_user,
-            title="Nouvelle commande reçue",
-            body=f"Une nouvelle commande a été passée : Commande #{order.id}",
-            order=order
-        )
-
-        # Envoyer la notification via Pusher Beams
-        beams_client.publish_to_users(
-            user_ids=[str(admin_user.id)],  # ID de l'utilisateur qui gère les commandes
-            publish_body={
-                'fcm': {
-                    'notification': {
-                        'title': 'Nouvelle commande',
-                        'body': f"Une nouvelle commande a été reçue : Commande #{order.id}",
-                    },
-                },
-            },
-        )
+      
 
         return CreateOrder(order=order)
 
@@ -243,22 +206,6 @@ class UpdateOrderStatus(graphene.Mutation):
 
 
 
-# Mutation pour marquer une notification comme lue
-class MarkNotificationAsRead(graphene.Mutation):
-    class Arguments:
-        notification_id = graphene.ID(required=True)
-    success = graphene.Boolean()
-
-    def mutate(self, info, notification_id):
-        try:
-            notification = Notification.objects.get(pk=notification_id)
-            notification.is_read = True
-            notification.save()
-            return MarkNotificationAsRead(success=True)
-        except Notification.DoesNotExist:
-            return MarkNotificationAsRead(success=False)
-
-
 
 # Définition des Mutations
 class Mutation(graphene.ObjectType):
@@ -266,7 +213,7 @@ class Mutation(graphene.ObjectType):
     delete_order = DeleteOrder.Field()
     update_order_status = UpdateOrderStatus.Field()
     update_order = UpdateOrder.Field()
-    mark_notification_as_read = MarkNotificationAsRead.Field()
+   
 
 
 

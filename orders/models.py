@@ -50,13 +50,3 @@ class OrderProduct(models.Model):
     def __str__(self):
         return f"{self.product.name} x{self.quantity}"
     
-class Notification(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)  # Lien vers l'utilisateur qui gère les commandes
-    title = models.CharField(max_length=255)
-    body = models.TextField()
-    is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, null=True, blank=True)  # Lien vers la commande
-
-    def __str__(self):
-        return f"Notification pour {self.user} - {self.title}"

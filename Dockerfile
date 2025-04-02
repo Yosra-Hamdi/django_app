@@ -8,6 +8,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE 8000
+RUN mkdir -p /app/orders/static && chmod -R 755 /app/orders/static
 
 
 
