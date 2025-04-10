@@ -1,564 +1,392 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <title>Dashboard</title>
-    <!-- Bootstrap CSS -->
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard E-commerce</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        .dashboard-container {
-            display: flex;
-            min-height: 100vh;
-        }
-        .sidebar {
-            width: 250px;
-            background: #2c3e50;
-            color: white;
-            padding: 20px;
-        }
-        .main-content {
-            flex: 1;
-            padding: 20px;
-        }
-        .notification-icon {
-            position: relative;
-            cursor: pointer;
-            margin-left: auto;
-            padding: 10px;
-        }
-        .notification-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: red;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-        }
-        .notification-popup {
-            position: absolute;
-            right: 0;
-            top: 50px;
-            width: 300px;
-            max-height: 400px; /* Limite la hauteur */
-            background: white;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            border-radius: 5px;
-            display: none;
-            z-index: 100;
-            overflow-y: auto; /* Permet le scroll si le contenu dépasse */
-
-        }
-        .notification-item {
-            cursor: pointer;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            transition: background 0.2s, opacity 0.2s;
-
-        }
-        .notification-item:hover {
-            background: #f8f9fa;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #ddd;
-        }
-        .unread {
-            background-color: #f0f7ff;
-            border-left: 3px solid #2c3e50;
-        }
-        .notification-item.unread {
-            background-color: #e0e0e0; /* Gris clair pour les non lues */
-            font-weight: bold;
-        }
-        .notification-item.read {
-            background-color: #ffffff; /* Blanc pour les lues */
-            opacity: 0.8; /* Effet légèrement estompé */
-        }
-
-
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/apollo-client-browser@1.0.0"></script>
+    <script src="https://unpkg.com/graphql-tag@2.12.6"></script>
 </head>
-
-
-<body>
-<div class="dashboard-container">
-<!-- Menu latéral -->
-<div class="sidebar">
-    <h2>Menu</h2>
-    <ul>
-        <li><a href="#" id="showOrders" >Commandes</a></li>
-       
-    </ul>
-</div>
-
-<!-- Contenu principal -->
-<div class="main-content">
-    <div class="header">
-        <h2>Tableau de Bord</h2>
-        <div class="notification-icon" id="notificationIcon">
-            🔔
-            <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8">Tableau de Bord</h1>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Section Statistiques -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Statistiques</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <p class="text-gray-600">Commandes aujourd'hui</p>
+                            <p id="today-orders" class="text-2xl font-bold">0</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600">Notifications non lues</p>
+                            <p id="unread-notifications" class="text-2xl font-bold">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Graphique -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">Activité récente</h2>
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Section Principale -->
+            <div class="lg:col-span-2">
+                <!-- Notifications -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">Notifications Récentes</h2>
+                        <button id="mark-all-read" class="text-blue-600 hover:text-blue-800 text-sm">Marquer tout comme lu</button>
+                    </div>
+                    <div id="notifications-list" class="space-y-3">
+                        <!-- Les notifications seront chargées ici -->
+                        <div class="text-center py-4 text-gray-500">Chargement des notifications...</div>
+                    </div>
+                </div>
+                
+                <!-- Commandes -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">Dernières Commandes</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Montant</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-list" class="bg-white divide-y divide-gray-200">
+                                <!-- Les commandes seront chargées ici -->
+                                <tr>
+                                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">Chargement des commandes...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Popup des notifications -->
-    <div class="notification-popup" id="notificationPopup">
-        <div id="notificationsList">
-            <div class="notification-item">Aucune notification</div>
-        </div>
-    </div>
-
-    <!-- Contenu de la page -->
-
- <div class="main-content">
-    <div id="ordersSection" style="display: none;">
-        <h2>Liste des Commandes</h2>
-        <table border="1">
-            <thead>
-                <tr>
-                    <th>ID Commande</th>
-                    <th>Date</th>
-                    <th>Client</th>
-                    <th>Email</th>
-                    <th>Téléphone</th>
-                    <th>Adresse de livraison</th>
-                    <th>Montant total</th>
-                    <th>Statut</th>
-                </tr>
-            </thead>
-            <tbody id="ordersTableBody">
-                <!-- Les commandes seront insérées ici dynamiquement -->
-            </tbody>
-        </table>
-    </div>
- </div>
-</div>
-</div>
-
-<script>
-// Variables globales
-let beamsClient;
-let notifications = [];
-const notificationBadge = document.getElementById('notificationBadge');
-const notificationPopup = document.getElementById('notificationPopup');
-const notificationsList = document.getElementById('notificationsList');
-const notificationIcon = document.getElementById('notificationIcon');
-
-// Initialisation
-function initPushNotifications() {
-    // Vérifier les permissions
-    if (Notification.permission !== 'granted') {
-        // Demander la permission au premier clic sur l'icône
-        notificationIcon.onclick = () => {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    setupBeams();
-                    showNotificationPopup();
-                }
+    <script>
+        // Configuration GraphQL
+        const API_URL = '/graphql/';
+        
+        // Configuration Pusher Beams
+        const beamsClient = new PusherPushNotifications.Client({
+            instanceId: '578cdb56-625d-4b55-810a-71fb27bbef7b'
+        });
+        
+        // Initialiser Pusher Beams
+        beamsClient.start()
+            .then(() => beamsClient.addDeviceInterest('new_orders'))
+            .then(() => console.log('Abonné à new_orders'))
+            .catch(console.error);
+        
+        // Fonction pour exécuter les requêtes GraphQL
+        async function fetchGraphQL(query, variables = {}) {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    query,
+                    variables
+                })
             });
-        };
+            return await response.json();
+        }
+        
+     // Charger les commandes
+async function loadOrders() {
+    const query = `
+        query {
+            orders {
+                id
+                creationDate
+                totalAmount
+                status
+                customer {
+                    firstName
+                    lastName
+                    email
+                    phone
+                }
+                deliveryAddress {
+                    street
+                    city
+                    country
+                    postalCode
+                }
+            }
+        }
+    `;
+    
+    const result = await fetchGraphQL(query);
+    if (result.errors) {
+        console.error('Erreur GraphQL:', result.errors);
         return;
     }
     
-    setupBeams();
-}
+    const orders = result.data.orders.reverse();
 
-// Configurer Pusher Beams
-function setupBeams() {
-    beamsClient = new PusherPushNotifications.Client({
-        instanceId: '578cdb56-625d-4b55-810a-71fb27bbef7b'
-        
-    });
-
-    beamsClient.start()
-        .then(() => beamsClient.addDeviceInterest('new_orders'))
-        .then(() => console.log('Abonné aux notifications'));
-
+    const ordersList = document.getElementById('orders-list');
     
-    beamsClient.onNotificationReceived = (payload) => {
-    // 1. Extraction robuste des données (supporte les deux formats Pusher)
-        const notificationData = payload.notification || {};
-        const additionalData = payload.data || {};
-
-        const title = notificationData.title || "Nouvelle commande";
-        const body = notificationData.body || "";
-        const order_id = additionalData.order_id || null;
-        console.log("📢 Notification reçue :", { title, body, order_id });
-
-        // 2. Ajout à l'interface dashboard
-        addNotification({ title, body, order_id });
-
-        // 3. Notification système optionnelle
-        if (Notification.permission === 'granted') {
-        const notification = new Notification(title, { 
-            body: body,
-            // data: { order_id }  // Optionnel pour les interactions
-        });
-        
-        notification.onclick = () => {
-            if (order_id) {
-                window.location.href = `/orders/${order_id}`;
-            }
-        };
+    if (orders.length === 0) {
+        ordersList.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Aucune commande trouvée</td></tr>';
+        return;
     }
-};
-
-    // Gestion du clic sur l'icône
-    notificationIcon.onclick = showNotificationPopup;
-}
-// Écouter les messages du Service Worker
-navigator.serviceWorker.addEventListener('message', (event) => { 
-  console.log("📢 Message reçu du SW :", event.data);
-
-  // Vérifie si l'objet contient bien une notification
-  if (!event.data || !event.data.notification) {
-    console.warn("⚠️ Aucune notification trouvée dans les données :", event.data);
-    return;
-  }
-
-  // Récupération correcte des valeurs
-  const { title, body } = event.data.notification;
-  
-  console.log("🔔 Notification reçue - Titre:", title, "Body:", body);
-
-  // Mettre à jour l'interface avec la notification
-  addNotification(title, body);
-});
-
-
-function addNotification({title, body, order_id, isRead = false}) {
-    const newNotif = {
-        id: Date.now(),
-        title,
-        body,
-        order_id,
-        isRead,
-        createdAt: new Date().toISOString()
-    };
-    notifications.unshift(newNotif);
-    updateNotificationUI();
-    saveNotifications();
-}
-
-// Ajoutez ces nouvelles fonctions
-function saveNotifications() {
-    localStorage.setItem('notifications', JSON.stringify(notifications));
-}
-
-function loadNotifications() {
-    // Vide d'abord le tableau
-    notifications = [];
     
-    const saved = localStorage.getItem('notifications');
-    if (saved) {
-        try {
-            notifications = JSON.parse(saved);
-            // Filtre les notifications valides
-            notifications = notifications.filter(n => n && n.id && n.title);
-        } catch (e) {
-            console.error("Erreur de parsing des notifications:", e);
-            notifications = [];
-        }
-    }
-    updateNotificationUI();
+    // Construction du HTML en gardant l'ordre du backend (déjà trié)
+    ordersList.innerHTML = orders.map(order => `
+        <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location.href='/orders/${order.id}'">
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${order.id}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(order.creationDate).toLocaleString()}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${order.customer.firstName} ${order.customer.lastName}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${order.totalAmount} TND</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                    ${order.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 
+                      order.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' : 
+                      'bg-red-100 text-red-800'}">
+                    ${order.status}
+                </span>
+            </td>
+        </tr>
+    `).join('');
+    
+    // Mettre à jour les statistiques
+    const today = new Date().toISOString().split('T')[0];
+    const todayOrders = orders.filter(order => order.creationDate.startsWith(today)).length;
+    document.getElementById('today-orders').textContent = todayOrders;
 }
 
-function fetchRecentNotifications() {
-    const graphqlQuery = {
-        query: `query {
-            allNotifications {
+// Fonction pour ajouter une nouvelle commande en haut du tableau
+function addNewOrder(order) {
+    const ordersList = document.getElementById('orders-list');
+    
+    // Supprimer le message "Aucune commande" si présent
+    if (ordersList.firstChild?.textContent?.includes('Aucune commande')) {
+        ordersList.innerHTML = '';
+    }
+    
+    // Ajouter la nouvelle commande en première position
+    ordersList.insertAdjacentHTML('afterbegin', `
+        <tr class="hover:bg-gray-50 cursor-pointer bg-blue-50" onclick="window.location.href='/orders/${order.id}'">
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#${order.id}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(order.creationDate).toLocaleString()}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${order.customer.firstName} ${order.customer.lastName}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${order.totalAmount} €</td>
+            <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                    ${order.status || 'NOUVEAU'}
+                </span>
+            </td>
+        </tr>
+    `);
+    
+    // Mettre à jour le compteur des commandes du jour
+    const today = new Date().toISOString().split('T')[0];
+    if (order.creationDate.startsWith(today)) {
+        const todayOrders = document.getElementById('today-orders');
+        todayOrders.textContent = parseInt(todayOrders.textContent || '0') + 1;
+    }
+}
+// Charger les notifications
+async function loadNotifications() {
+    const query = `
+        query {
+            allNotifications(isRead: false) {
                 id
-                createdAt
-                body
-                isRead
                 title
+                body
+                createdAt
+                isRead
                 order {
                     id
                 }
             }
-        }`
-    };
+        }
+    `;
+    
+    const result = await fetchGraphQL(query);
+    if (result.errors) {
+        console.error('Erreur GraphQL:', result.errors);
+        return;
+    }
+    
+    const notifications = result.data.allNotifications.reverse();
+    const notificationsList = document.getElementById('notifications-list');
+    
+    if (notifications.length === 0) {
+        notificationsList.innerHTML = '<div class="text-center py-4 text-gray-500">Aucune notification non lue</div>';
+        document.getElementById('unread-notifications').textContent = '0';
+        return;
+    }
+    
+    // Construction du HTML en gardant l'ordre du backend (déjà trié)
+    notificationsList.innerHTML = notifications.map(notification => `
+        <div class="p-3 border rounded-lg ${notification.isRead ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'}">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 class="font-medium">${notification.title}</h3>
+                    <p class="text-sm text-gray-600">${notification.body}</p>
+                    <p class="text-xs text-gray-500 mt-1">${new Date(notification.createdAt).toLocaleString()}</p>
+                </div>
+                <button onclick="markNotificationAsRead('${notification.id}')" class="text-sm ${notification.isRead ? 'text-gray-400' : 'text-blue-600 hover:text-blue-800'}">
+                    ${notification.isRead ? 'Lu' : 'Marquer comme lu'}
+                </button>
+            </div>
+            ${notification.order ? `<a href="/orders/${notification.order.id}" class="text-sm text-blue-600 hover:underline mt-2 inline-block">Voir la commande</a>` : ''}
+        </div>
+    `).join('');
+    
+    document.getElementById('unread-notifications').textContent = notifications.length;
+}
 
-    fetch('/graphql/', {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(graphqlQuery)
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.text().then(text => {
-                console.error("Erreur détaillée:", text);
-                throw new Error(`Erreur HTTP ${response.status}`);
+// Fonction pour ajouter une nouvelle notification en haut de la liste
+function addNewNotification(notification) {
+    const notificationsList = document.getElementById('notifications-list');
+    
+    // Supprimer le message "Aucune notification" si présent
+    if (notificationsList.firstChild?.classList?.contains('text-center')) {
+        notificationsList.innerHTML = '';
+    }
+    
+    // Ajouter la nouvelle notification en première position
+    notificationsList.insertAdjacentHTML('afterbegin', `
+        <div class="p-3 border rounded-lg bg-blue-50 border-blue-200">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 class="font-medium">${notification.title}</h3>
+                    <p class="text-sm text-gray-600">${notification.body}</p>
+                    <p class="text-xs text-gray-500 mt-1">${new Date().toLocaleString()}</p>
+                </div>
+                <button onclick="markNotificationAsRead('${notification.id}')" class="text-sm text-blue-600 hover:text-blue-800">
+                    Marquer comme lu
+                </button>
+            </div>
+            ${notification.orderId ? `<a href="/orders/${notification.orderId}" class="text-sm text-blue-600 hover:underline mt-2 inline-block">Voir la commande</a>` : ''}
+        </div>
+    `);
+    
+    // Mettre à jour le compteur
+    const unreadCount = document.getElementById('unread-notifications');
+    unreadCount.textContent = parseInt(unreadCount.textContent || '0') + 1;
+}
+        
+        // Marquer une notification comme lue
+        async function markNotificationAsRead(notificationId) {
+            const mutation = `
+                mutation MarkNotificationAsRead($id: ID!) {
+                    markNotificationAsRead(id: $id) {
+                        notification {
+                            id
+                            isRead
+                        }
+                    }
+                }
+            `;
+            
+            await fetchGraphQL(mutation, { id: notificationId });
+            loadNotifications();
+        }
+        
+        // Marquer toutes les notifications comme lues
+        document.getElementById('mark-all-read').addEventListener('click', async () => {
+            const mutation = `
+                mutation MarkAllNotificationsAsRead {
+                    markAllNotificationsAsRead {
+                        count
+                    }
+                }
+            `;
+            
+            await fetchGraphQL(mutation);
+            loadNotifications();
+        });
+        
+        // Initialiser le graphique
+        function initChart() {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+                    datasets: [{
+                        label: 'Commandes',
+                        data: [12, 19, 3, 5, 2, 3, 7],
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
             });
         }
-        return response.json();
-    })
-    .then(data => {
-        console.log("Données reçues:", data);
         
-        // Vérifie d'abord si la réponse est vide
-        if (!data.data?.allNotifications || data.data.allNotifications.length === 0) {
-            notifications = []; // Réinitialise si pas de notifications
-        } else {
-            // Traitement des données
-            const newNotifications = [];
-            data.data.allNotifications.forEach(notif => {
-                if (!notifications.some(n => n.id === notif.id)) {
-                    newNotifications.push({
-                        id: notif.id,
-                        title: notif.title,
-                        body: notif.body,
-                        order_id: notif.order?.id || null,
-                        isRead: notif.isRead,
-                        createdAt: notif.createdAt
-                    });
-                }
+       // Écouter les nouvelles notifications en temps réel
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'NEW_NOTIFICATION') {
+            // Afficher une notification toast
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg';
+            toast.innerHTML = `
+                <h3 class="font-bold">${event.data.notification.title}</h3>
+                <p>${event.data.notification.body}</p>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+            
+            // Ajouter la nouvelle notification et commande
+            addNewNotification({
+                title: event.data.notification.title,
+                body: event.data.notification.body,
+                id: 'notif_' + Date.now(),
+                orderId: event.data.data?.order_id,
+                isRead: false,
+                createdAt: new Date().toISOString()
             });
             
-            // Remplace les notifications existantes par les nouvelles
-            notifications = newNotifications;
+            // Si la notification contient une commande, l'ajouter aussi
+            if (event.data.data?.order_id) {
+                // Vous devrez peut-être récupérer les détails complets de la commande
+                // via une requête GraphQL supplémentaire ici
+            }
         }
-        
-        updateNotificationUI();
-        saveNotifications();
-    })
-    .catch(error => {
-        console.error("Erreur lors de la récupération:", error);
     });
 }
-    
-
-// Afficher/cacher le popup
-function showNotificationPopup() {
-    notificationPopup.style.display = 
-        notificationPopup.style.display === 'block' ? 'none' : 'block';
-}
-async function markAsRead(notificationId) {
-    try {
-        const response = await fetch('/graphql/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                query: `
-                    mutation MarkNotificationAsRead($notificationId: ID!) {
-                        markNotificationAsRead(notificationId: $notificationId) {
-                            success
-                        }
-                    }
-                `,
-                variables: { notificationId }
-            })
+        // Charger les données initiales
+        document.addEventListener('DOMContentLoaded', () => {
+            loadOrders();
+            loadNotifications();
+            initChart();
         });
-
-        const result = await response.json();
-
-        if (result.data?.markNotificationAsRead?.success) {
-            console.log("✅ Notification marquée comme lue");
-
-            // Met à jour localement la notification
-            notifications = notifications.map(n =>
-                n.id === notificationId ? { ...n, isRead: true } : n
-            );
-
-            updateNotificationUI();
-            saveNotifications(); 
-        }
-    } catch (error) {
-        console.error("❌ Erreur lors du marquage de la notification :", error);
-    }
-}
-
-
-// Fermer le popup quand on clique ailleurs
-document.addEventListener('click', (e) => {
-    if (!notificationPopup.contains(e.target) && e.target !== notificationIcon) {
-        notificationPopup.style.display = 'none';
-    }
-});
-
-// Fonction pour gérer le clic
-// Fonction pour gérer le clic
-async function handleNotificationClick(notificationId) {
-    if (!notificationId) {
-        console.error("ID de notification invalide");
-        return;
-    }
-
-    try {
-        // 1. Marquer comme lue dans l'interface immédiatement
-        notifications = notifications.map(n => {
-            if (n.id == notificationId) {
-                return {...n, isRead: true};
-            }
-            return n;
-        });
-        updateNotificationUI();
-        
-        // 2. Envoyer la requête au serveur
-        const response = await fetch('/graphql/', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                query: `
-                    mutation MarkAsRead($id: ID!) {
-                        markNotificationAsRead(notificationId: $id) {
-                            success
-                        }
-                    }
-                `,
-                variables: {id: notificationId}
-            })
-        });
-
-        const result = await response.json();
-        
-        if (result.errors) {
-            // Si erreur, on remet isRead à false
-            notifications = notifications.map(n => {
-                if (n.id == notificationId) {
-                    return {...n, isRead: false};
-                }
-                return n;
-            });
-            updateNotificationUI();
-            console.error("Erreur GraphQL:", result.errors);
-        }
-    } catch (error) {
-        console.error("Erreur:", error);
-    }
-}
-
-
-// Modifiez l'initialisation
-document.addEventListener('DOMContentLoaded', () => {
-    loadNotifications();
-    initPushNotifications();
-    setInterval(fetchRecentNotifications, 30000);
-});
-// Service Worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service-worker.js')
-    .then(registration => console.log('SW enregistré !'))
-    .catch(err => console.error('Échec :', err));
-}
-
-// Récupérer les éléments HTML
-const ordersSection = document.getElementById('ordersSection');
-const showOrdersButton = document.getElementById('showOrders');
-
-// Fonction pour afficher la section et charger les commandes
-showOrdersButton.addEventListener('click', (event) => {
-    event.preventDefault(); // Empêcher le rechargement de la page
-
-    // Afficher le tableau
-    ordersSection.style.display = 'block';
-
-    // Charger les commandes
-    fetchOrders();
-});
-
-// Fonction pour récupérer et afficher les commandes
-function fetchOrders() {
-    fetch('/graphql/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: `query {
-                orders {
-                    id
-                    creationDate
-                    totalAmount
-                    status
-                    customer {
-                        firstName
-                        lastName
-                        email
-                        phone
-                    }
-                    deliveryAddress {
-                        street
-                        city
-                        country
-                        postalCode
-                    }
-                }
-            }`
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        const orders = data.data.orders;
-        const tableBody = document.getElementById('ordersTableBody');
-        tableBody.innerHTML = ""; // Vider le tableau avant d'insérer les nouvelles données
-
-        orders.forEach(order => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${order.id}</td>
-                <td>${new Date(order.creationDate).toLocaleDateString()}</td>
-                <td>${order.customer.firstName} ${order.customer.lastName}</td>
-                <td>${order.customer.email}</td>
-                <td>${order.customer.phone}</td>
-                <td>${order.deliveryAddress.street}, ${order.deliveryAddress.city}, ${order.deliveryAddress.country} (${order.deliveryAddress.postalCode})</td>
-                <td>${order.totalAmount} €</td>
-                <td>${order.status}</td>
-            `;
-            tableBody.appendChild(row);
-        });
-    })
-    .catch(error => console.error('Erreur lors de la récupération des commandes:', error));
-}
-// Modifiez updateNotificationUI pour garder le style actuel
-function updateNotificationUI() {
-    // Filtrage plus strict des notifications non lues
-    const unreadCount = notifications.reduce((count, notif) => {
-        return count + (notif && !notif.isRead ? 1 : 0);
-    }, 0);
-    
-    // Mise à jour plus robuste du badge
-    notificationBadge.textContent = unreadCount;
-    notificationBadge.style.display = unreadCount > 0 ? 'flex' : 'none';
-    
-    // Gestion du cas "Aucune notification"
-    if (notifications.length === 0 || !notifications.some(n => n && n.id)) {
-        notificationsList.innerHTML = '<div class="notification-item">Aucune notification</div>';
-        return;
-    }
-    
-    // Affichage normal
-    notificationsList.innerHTML = notifications
-        .filter(n => n && n.id) // Filtre les notifications valides
-        .map(notif => `
-            <div class="notification-item ${notif.isRead ? 'read' : 'unread'}" 
-                 onclick="handleNotificationClick(${notif.id})">
-                <strong>${notif.title || 'Notification'}</strong>
-                <p>${notif.body || ''}</p>
-                <small>${new Date(notif.createdAt).toLocaleString()}</small>
-            </div>
-        `).join('');
-}
-
-
-
-
-</script>
+    </script>
 </body>
 </html>

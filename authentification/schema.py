@@ -16,7 +16,6 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from graphql import GraphQLError
 
 from authentification.models import User
-from .utils import send_password_reset_email  # Importez la fonction utilitaire
 
 class UserType(DjangoObjectType):
     class Meta:

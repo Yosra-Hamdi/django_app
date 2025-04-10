@@ -1,80 +1,41 @@
 
+from decimal import Decimal
 import graphene
 from graphene_django import DjangoObjectType
+from categories.schema import CategoryType
 from products.models import Category, Product
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from graphene_file_upload.scalars import Upload
 
-class CategoryType(DjangoObjectType):
 
-
-
-    class Meta:
-        model = Category
-        fields = ("id", "name")
 
 class ProductType(DjangoObjectType):
     vat_amount = graphene.Float()
     price_excluding_vat = graphene.Float()
     price_including_vat = graphene.Float()
+    category_name = graphene.String()
 
     class Meta:
         model = Product
-        fields = ("id", "name", "stock_quantity", "category", "unit", "image", "purchase_price", "selling_price", 
-            "vat_rate", "include_vat")
+        fields = "__all__"
     
     def resolve_vat_amount(self, info):
-        return float(self.vat_amount)
+        return self.vat_amount
 
     def resolve_price_excluding_vat(self, info):
-        return float(self.price_excluding_vat)
+        return self.price_excluding_vat
 
     def resolve_price_including_vat(self, info):
-        return float(self.price_including_vat)
+        return self.price_including_vat
 
-
-
+    def resolve_category_name(self, info):
+        return self.category.name if self.category else None
 
     def resolve_image(self, info):
         if self.image:
-            return self.image.url  # Retourne l'URL complète de l'image
+            return info.context.build_absolute_uri(self.image.url)
         return None
 
-# Mutations pour Category
-class CreateCategory(graphene.Mutation):
-    class Arguments:
-        name = graphene.String(required=True)
-
-    category = graphene.Field(CategoryType)
-
-    def mutate(self, info, name):
-        category = Category(name=name)
-        category.save()
-        return CreateCategory(category=category)
-
-class UpdateCategory(graphene.Mutation):
-    class Arguments:
-        id = graphene.Int(required=True)
-        name = graphene.String(required=True)
-
-    category = graphene.Field(CategoryType)
-
-    def mutate(self, info, id, name):
-        category = Category.objects.get(id=id)
-        category.name = name
-        category.save()
-        return UpdateCategory(category=category)
-
-class DeleteCategory(graphene.Mutation):
-    class Arguments:
-        id = graphene.Int(required=True)
-
-    success = graphene.Boolean()
-
-    def mutate(self, info, id):
-        category = Category.objects.get(id=id)
-        category.delete()
-        return DeleteCategory(success=True)
 
 
 
@@ -84,32 +45,40 @@ class Query(graphene.ObjectType):
     all_products = graphene.List(ProductType)
     product_by_id = graphene.Field(ProductType, id=graphene.Int())
     products_by_category = graphene.List(ProductType, category_id=graphene.Int())
-    categories = graphene.List(CategoryType)
+    all_categories = graphene.List(CategoryType)
     search_products = graphene.List(ProductType, name=graphene.String(required=True))
     
     def resolve_all_products(root, info):
-        return Product.objects.all()
+        return Product.objects.select_related('category').all()
     
     def resolve_product_by_id(root, info, id):
         try:
-            return Product.objects.get(id=id)
+            return Product.objects.select_related('category').get(id=id)
         except Product.DoesNotExist:
             return None
+    
     def resolve_products_by_category(root, info, category_id):
         return Product.objects.filter(category_id=category_id)
+    
+    def resolve_all_categories(root, info):
+        return Category.objects.all()
+    
     def resolve_search_products(self, info, name):
         return Product.objects.filter(name__icontains=name)
-    
+   
   # Mutations pour Product  
 class CreateProductInput(graphene.InputObjectType):
     name = graphene.String(required=True)
-    stock_quantity = graphene.Int(required=True)
+    initial_stock = graphene.Int(  # Nouveau champ pour la quantité initiale
+        default_value=0,
+        description="Quantité initiale en stock"
+    )
     category_id = graphene.Int()
-    unit = graphene.String()
-    purchase_price = graphene.Float()
-    selling_price = graphene.Float(required=True)
-    vat_rate = graphene.Float()
-    include_vat = graphene.Boolean()
+    unit = graphene.String(default_value="kg")
+    purchase_price = graphene.Decimal()
+    selling_price = graphene.Decimal(required=True)
+    vat_rate = graphene.Decimal(default_value=0.000)
+    include_vat = graphene.Boolean(default_value=False)
     image = Upload()
 
 class CreateProduct(graphene.Mutation):
@@ -120,17 +89,35 @@ class CreateProduct(graphene.Mutation):
 
     @classmethod
     def mutate(cls, root, info, input):
-        # Gestion de l'image séparément
-        image = input.pop('image', None)
-        
-        product = Product(**input)
-        
-        if image and isinstance(image, InMemoryUploadedFile):
-            product.image = image
-        
-        product.save()
-        return CreateProduct(product=product)
-    
+        try:
+            # Convertir les Decimal en float si nécessaire
+            input_data = dict(input)
+            initial_stock = input_data.pop('initial_stock', 0)  
+            for field in ['purchase_price', 'selling_price', 'vat_rate']:
+                if field in input_data and input_data[field] is not None:
+                    input_data[field] = Decimal(input_data[field])
+            
+            # Gestion séparée de l'image
+            image = input_data.pop('image', None)
+            product = Product(**input_data)
+            
+            if image and isinstance(image, InMemoryUploadedFile):
+                product.image = image
+            
+            product.save()
+            # Création ou mise à jour du stock associé
+            if hasattr(product, 'stock'):
+                product.stock.quantity = initial_stock
+                product.stock.save()
+            else:
+                from stock.models import Stock  # Import local pour éviter les circular imports
+                Stock.objects.create(product=product, quantity=initial_stock)
+            
+
+            return CreateProduct(product=product)
+        except Exception as e:
+            raise Exception(f"Erreur lors de la création du produit: {str(e)}")
+
     #
 class UpdateProductInput(graphene.InputObjectType):
     id = graphene.ID(required=True)
@@ -211,12 +198,10 @@ class DeleteAllProducts(graphene.Mutation):
             )
 # Classe Mutation principale pour inclure toutes les mutations
 class Mutation(graphene.ObjectType):
-    create_category = CreateCategory.Field()
-    update_category = UpdateCategory.Field()
-    delete_category = DeleteCategory.Field()
+ 
     create_product = CreateProduct.Field()
     update_product = UpdateProduct.Field()
-    Delete_product = DeleteProduct.Field()
+    delete_product = DeleteProduct.Field()
     delete_all_products = DeleteAllProducts.Field()
  # Ajouter la nouvelle mutation
 schema = graphene.Schema(query=Query, mutation=Mutation)

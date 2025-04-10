@@ -93,6 +93,9 @@ INSTALLED_APPS = [
     'customers',
     'authentification',
     'notification',
+    'stock',
+    'categories',
+    
     
 
     
