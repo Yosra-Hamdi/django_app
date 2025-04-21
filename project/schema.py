@@ -1,7 +1,8 @@
 import graphene
-import orders.schema , products.schema ,authentification.schema,   customers.schema ,addresses.schema   , notification.schema , stock.schema , categories.schema
-
-
+import orders.schema  ,  customers.schema , stock.schema 
+import products.schema , notification.schema , gallery.schema
+import authentification.schema,addresses.schema , categories.schema
+import stock_mvt.schema
 
 class Query(
       orders.schema.Query,
@@ -12,6 +13,9 @@ class Query(
       notification.schema.Query,
       stock.schema.StockQuery,
       categories.schema.Query,
+      gallery.schema.Query,
+      stock_mvt.schema.StockQuery,
+      
 
       
 
@@ -25,6 +29,9 @@ class Mutation(
      notification.schema.Mutation,
      stock.schema.StockMutation,
      categories.schema.Mutation,
+     gallery.schema.Mutation,
+     stock_mvt.schema.StockMutation,
+      customers.schema.Mutation,
 
 
      graphene.ObjectType):

@@ -1,6 +1,6 @@
 from graphene_django import DjangoObjectType
 import graphene
-from graphene import Enum
+from graphene import Decimal, Enum
 from addresses.schema import AddressType
 from authentification.models import User
 from customers.models import Customer
@@ -13,12 +13,19 @@ from .beams_config import beams_client
 
 
 # Enum pour les statuts de la commande
-class StatusEnum(Enum):
+class StatusEnum(graphene.Enum):
     UNCONFIRMED = "UNCONFIRMED"
     CONFIRMED = "CONFIRMED"
     CANCELLED = "CANCELLED"
     PAID = "PAID"
-    DELIVERED = "DELIVERED"
+    RETURNED = "RETURNED"
+    DELIVERED_PAID = "DELIVERED_PAID"
+    STOCK_VERIFICATION = "STOCK_VERIFICATION"
+    PREPARATION = "PREPARATION"
+    PACKAGING = "PACKAGING"
+    WAITING_FOR_PAYMENT = "WAITING_FOR_PAYMENT"
+    PAYMENT_ERROR = "PAYMENT_ERROR"
+    SHIPPED = "SHIPPED"
 
 # Enum pour les méthodes de paiement
 class PaymentMethodEnum(Enum):
@@ -34,6 +41,8 @@ class OrderProductType(DjangoObjectType):
 # Type GraphQL pour Order
 class OrderType(DjangoObjectType):
     total_amount = graphene.Float()
+    total_amount_with_tax = graphene.Float()
+    total_tax_amount = graphene.Float()
 
     class Meta:
         model = Order
@@ -41,7 +50,27 @@ class OrderType(DjangoObjectType):
 
     # Calcul du montant total
     def resolve_total_amount(self, info):
-        return self.calculate_total()
+        """Retourne le montant HT si include_vat=False, sinon retourne le montant TTC"""
+        return float(self.calculate_total())
+
+    def resolve_total_amount_with_tax(self, info):
+        """Retourne toujours le montant TTC"""
+        total = Decimal('0')
+        for order_product in self.products.all():
+            product = order_product.product
+            quantity = order_product.quantity
+            total += (product.selling_price + product.vat_amount) * quantity
+        return float(total)
+
+    def resolve_total_tax_amount(self, info):
+        """Retourne le montant total de la TVA"""
+        total_tax = Decimal('0')
+        for order_product in self.products.all():
+            product = order_product.product
+            quantity = order_product.quantity
+            if not product.include_vat:  # Si prix HT, on ajoute la TVA
+                total_tax += product.vat_amount * quantity
+        return float(total_tax)
 
 
 # Requêtes GraphQL

@@ -7,7 +7,7 @@ from graphene import Mutation, ObjectType, String, Int, Boolean
 class CategoryType(DjangoObjectType):
     class Meta:
         model = Category
-        fields = ('id', 'name') 
+        fields = "__all__"
         
 
 
@@ -40,17 +40,22 @@ class UpdateCategory(Mutation):
 
 class DeleteCategory(Mutation):
     class Arguments:
-        id = Int(required=True)  # ID de la catégorie à supprimer
+        id = graphene.ID(required=True) 
 
-    success = Boolean()
+    success = graphene.Boolean()
+    message = graphene.String()
 
     def mutate(self, info, id):
         try:
             category = Category.objects.get(id=id)
             category.delete()
-            return DeleteCategory(success=True)
+            return DeleteCategory(success=True, message="Catégorie supprimé avec succès")
         except Category.DoesNotExist:
-            raise Exception("Category not found")
+           return DeleteCategory(success=False, message="Catégorie non trouvé")
+
+
+
+
 
 
 class DeleteAllCategories(Mutation):
@@ -61,13 +66,15 @@ class DeleteAllCategories(Mutation):
         return DeleteAllCategories(success=True)
 
 class Query(ObjectType):
-    categories = graphene.List(CategoryType)
+    all_categories = graphene.List(CategoryType)
     search_category = graphene.List(
         CategoryType,
         name=String(required=True)
     )
-    def resolve_categories(self, info):
+    def resolve_all_categories(self, info):
+        print("✅ resolve_all_categories appelé")
         return Category.objects.all()
+    
     def resolve_search_category(self, info, name):
         return Category.objects.filter(name__icontains=name)
 

@@ -1,5 +1,7 @@
 import graphene
 from graphene_django import DjangoObjectType
+
+from stock_mvt.models import StockMovement
 from .models import Stock
 from products.models import Product
 
@@ -11,6 +13,7 @@ class StockType(DjangoObjectType):
 class IncreaseStockInput(graphene.InputObjectType):
     product_id = graphene.ID(required=True, description="ID du produit")
     quantity = graphene.Int(required=True, description="Quantité à ajouter (négative pour retirer)")
+    reason = graphene.String(required=True, description="Raison de la mise à jour du stock")
 
 class IncreaseStock(graphene.Mutation):
     class Arguments:
@@ -25,6 +28,7 @@ class IncreaseStock(graphene.Mutation):
         try:
             product_id = input.product_id
             quantity = input.quantity
+            reason = input.reason 
 
             # 1. Récupérer le produit et son stock
             product = Product.objects.get(id=product_id)
@@ -34,10 +38,17 @@ class IncreaseStock(graphene.Mutation):
             stock.quantity += quantity
             stock.save()
 
+            # ➕ Création d’un mouvement de stock avec la raison
+            StockMovement.objects.create(
+                stock=stock,
+                quantity=quantity,
+                reason=reason
+            )
+
             return IncreaseStock(
                 stock=stock,
                 success=True,
-                message=f"Stock mis à jour. Nouvelle quantité: {stock.quantity}"
+                message=f"Stock mis à jour avec succès. Raison : {reason}"
             )
 
         except Product.DoesNotExist:
