@@ -7,8 +7,8 @@ from django.utils import timezone
 class Invoice(models.Model):
     order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='invoice')
     invoice_number = models.CharField(max_length=50, unique=True)
-    issue_date = models.DateField(auto_now_add=True)
-    due_date = models.DateField()
+    issue_date = models.DateField(auto_now_add=True) ## Date d'émission de la facture
+    due_date = models.DateField() ## Date d'échéance de la facture
     
 
     def generate_invoice_number(self):
