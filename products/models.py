@@ -11,6 +11,7 @@ class Product(models.Model):
         ('Meter', 'meter'),
     ]
     name = models.CharField(max_length=100)
+    barcode = models.CharField(max_length=50, unique=True, null=True, blank=True) # 
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True , related_name='products')
     unit = models.CharField(max_length=50, choices=UNIT_CHOICES, default='kg')
     purchase_price  = models.DecimalField(max_digits=10, decimal_places=3,  verbose_name="Coût d'achat")
@@ -26,7 +27,13 @@ class Product(models.Model):
     @property
     def vat_amount(self):
         """Calcule le montant de la TVA"""
-        return (self.selling_price) * (self.vat_rate) / 100
+        if self.include_vat:
+         # Si le prix est TTC, on calcule la TVA à partir du HT
+            ht_price = self.price_excluding_vat
+            return ht_price * (self.vat_rate / 100)
+        else:
+        # Si le prix est HT, calcul direct
+            return self.selling_price * (self.vat_rate / 100)
 
     @property
     def price_excluding_vat(self):
@@ -34,7 +41,14 @@ class Product(models.Model):
         if self.include_vat:
             return (self.selling_price) / (1 + (self.vat_rate) / 100)
         return (self.selling_price)
-
+    
+    @property
+    def price_including_vat(self):
+        """Prix toutes taxes comprises (TTC)"""
+        if self.include_vat:
+            return self.selling_price
+        else:
+            return self.selling_price * (1 + self.vat_rate / 100)
 
 
     @property

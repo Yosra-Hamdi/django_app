@@ -18,8 +18,7 @@ from stock.models import Stock
 
 class ProductHistoryType(DjangoObjectType):
     action_display = graphene.String()
-    user_email = graphene.String()
-    user_name = graphene.String()
+   
     class Meta:
         model = ProductHistory
         fields = '__all__'
@@ -27,13 +26,7 @@ class ProductHistoryType(DjangoObjectType):
     def resolve_action_display(self, info):
         return self.get_action_display()
     
-    def resolve_user_email(self, info):
-        return self.user.email if self.user else None
     
-    def resolve_user_name(self, info):
-        if self.user:
-            return f"{self.user.first_name} {self.user.last_name}".strip()
-        return None
 
 class ProductType(DjangoObjectType):
     vat_amount = graphene.Float()
@@ -76,6 +69,8 @@ class Query(graphene.ObjectType):
     product_by_id = graphene.Field(ProductType, id=graphene.Int())
     products_by_category = graphene.List(ProductType, category_id=graphene.Int())
     search_products = graphene.List(ProductType, name=graphene.String(required=True))
+    product_by_barcode = graphene.Field(ProductType, barcode=graphene.String(required=True))
+
     product_history = graphene.List(
         ProductHistoryType,
         product_id=graphene.ID(required=True),
@@ -84,6 +79,11 @@ class Query(graphene.ObjectType):
     )
 
 
+    def resolve_product_by_barcode(self, info, barcode):
+        try:
+            return Product.objects.get(barcode=barcode)
+        except Product.DoesNotExist:
+            return None
 
 
 
@@ -116,6 +116,7 @@ class Query(graphene.ObjectType):
   # Mutations pour Product  
 class CreateProductInput(graphene.InputObjectType):
     name = graphene.String(required=True)
+    barcode = graphene.String() 
     initial_stock = graphene.Int(  default_value=0, description="Quantité initiale en stock")
     category_id = graphene.Int()
     unit = graphene.String(default_value="kg")
@@ -135,40 +136,29 @@ class CreateProduct(graphene.Mutation):
     @classmethod
     def mutate(cls, root, info, input):
         try:
-            user = info.context.user
-            if not user or user.is_anonymous:
-                raise Exception("Authentification requise")
+           
 
             # Convertir l'input
             input_data = dict(input)
             
-            # Créer le produit avec l'utilisateur explicitement
-            product = Product(
-                **{k: v for k, v in input_data.items() if k not in ['initial_stock', 'gallery_image_ids', 'primary_image_id']}
-            )
-            
-            # Stocker l'utilisateur de manière explicite
-            product._current_user = user
-            product.save()
-
+           
 
             # Conversion des Decimal
-            input_data = dict(input)
+            for field in ['purchase_price', 'selling_price', 'vat_rate']:
+                if field in input_data and input_data[field] is not None:
+                    input_data[field] = Decimal(input_data[field])
+           
             initial_stock = input_data.pop('initial_stock', 0)
             gallery_image_ids = input_data.pop('gallery_image_ids', [])
             primary_image_id = input_data.pop('primary_image_id', None)
             
-            for field in ['purchase_price', 'selling_price', 'vat_rate']:
-                if field in input_data and input_data[field] is not None:
-                    input_data[field] = Decimal(input_data[field])
+            
             
             # Création du produit
             product = Product(**input_data)
-            product._request_user = info.context.user  # Ajoutez cette ligne
             product.save()
             
               # Lier les images de la galerie
-            primary_image_id = input_data.pop('primary_image_id', None)
             for image_id in gallery_image_ids:
                 gallery_image = GalleryImage.objects.get(id=image_id)
                 product_image = ProductImage.objects.create(
@@ -191,6 +181,7 @@ class CreateProduct(graphene.Mutation):
 class UpdateProductInput(graphene.InputObjectType):
     id = graphene.ID(required=True)
     name = graphene.String()
+    barcode = graphene.String() 
     initial_stock = graphene.Int(description="Quantité initiale en stock")
     category_id = graphene.Int()
     unit = graphene.String()
@@ -211,7 +202,6 @@ class UpdateProduct(graphene.Mutation):
     @classmethod
     def mutate(cls, root, info, input):
         try:
-            user = info.context.user
             input_data = dict(input)
             product_id = input_data.pop('id')
             initial_stock = input_data.pop('initial_stock', None)
@@ -220,7 +210,6 @@ class UpdateProduct(graphene.Mutation):
 
             # Récupérer le produit
             product = Product.objects.get(id=product_id)
-            product._request_user = info.context.user  # Ajoutez cette ligne
 
             # Mettre à jour les champs de base
             for field, value in input_data.items():

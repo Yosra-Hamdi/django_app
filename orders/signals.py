@@ -15,7 +15,7 @@ def envoyer_notification_commande(sender, instance, created, **kwargs):
     if not created:
         return
 
-    message = f"Nouvelle commande #{instance.id}"
+    message = f"nouvelle commande a été passée #{instance.id}"
     
     try:
        

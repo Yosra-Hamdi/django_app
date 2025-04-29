@@ -98,6 +98,10 @@ INSTALLED_APPS = [
     'gallery',
     'stock_mvt',
    'core.apps.CoreConfig',
+   'devis',
+   'facture',
+   'deliveryNote',
+
     
     
     

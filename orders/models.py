@@ -4,7 +4,7 @@ from authentification.models import User
 from customers.models import Customer
 from products.models import Product
 from stock.models import Stock
-
+from django.utils import timezone 
 
 
 
@@ -44,10 +44,25 @@ class Order(models.Model):
     delivery_address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, related_name='delivery_orders')
     billing_address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, related_name='billing_orders')
     stock_preleve = models.BooleanField(default=False)
+    subtotal_ht = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_vat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_ttc = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
 
     def __str__(self):
         return f"Order #{self.id} - Status: {self.get_status_display()}"
+    
+    def calculate_totals(self):
+        """Calcule tous les montants et les sauvegarde"""
+        self.subtotal_ht = sum(item.total_ht for item in self.products.all())
+        self.total_vat = sum(item.vat_amount for item in self.products.all())
+        self.total_ttc = self.subtotal_ht + self.total_vat
+        self.total_amount = self.total_ttc  # Pour compatibilité
+        self.save()
+    
+    def generate_order_number(self):
+        date_part = timezone.now().strftime('%Y%m%d')  # Maintenant correct
+        return f"CMD-{date_part}-{self.id:04d}"
 
 
     def update_stock_on_status_change(self, old_status, new_status):
@@ -124,32 +139,38 @@ class Order(models.Model):
 
     def calculate_total(self):
         """
-        Calcule le montant total de la commande en tenant compte:
-        - De la quantité de chaque produit
-        - Du prix de vente (HT ou TTC selon include_vat)
-        - De la TVA si le prix est HT
+        Calcule le montant total TTC de la commande en utilisant les prix
+        sauvegardés dans OrderProduct
         """
-        total = 0
-        for order_product in self.products.all():
-            product = order_product.product
-            quantity = order_product.quantity
-            
-            if product.include_vat:
-                # Si le prix est TTC, on l'utilise directement
-                total += product.selling_price * quantity
-            else:
-                # Si le prix est HT, on ajoute la TVA
-                total += (product.selling_price + product.vat_amount) * quantity
-        
-        self.total_amount = total
+        self.total_amount = sum(item.total_ttc for item in self.products.all())
         self.save()
-        return total
+        return self.total_amount
 
 class OrderProduct(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='products')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
+    unit_price_ht = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Prix unitaire HT
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2 , null=True, blank=True )  # Taux de TVA
+    
 
-    def __str__(self):
-        return f"{self.product.name} x{self.quantity}"
+    def save(self, *args, **kwargs):
+        # S'assurer que unit_price_ht et vat_rate sont remplis à la création
+        if not self.pk:  # Si c'est une nouvelle instance
+            self.unit_price_ht = self.product.price_excluding_vat
+            self.vat_rate = self.product.vat_rate
+        super().save(*args, **kwargs)
+
+        
+    @property
+    def total_ht(self):
+        return self.unit_price_ht * self.quantity
+        
+    @property
+    def vat_amount(self):
+        return self.total_ht * (self.vat_rate / 100)
+        
+    @property
+    def total_ttc(self):
+        return self.total_ht + self.vat_amount
     

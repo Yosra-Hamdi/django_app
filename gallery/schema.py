@@ -73,10 +73,28 @@ class SetPrimaryImage(graphene.Mutation):
             return SetPrimaryImage(success=True)
         except ProductImage.DoesNotExist:
             raise Exception("Cette image n'est pas associée au produit")
+#
+class DeleteGalleryImage(graphene.Mutation):
+    class Arguments:
+        image_id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @classmethod
+    def mutate(cls, root, info, image_id):
+        try:
+            image = GalleryImage.objects.get(pk=image_id)
+            image.delete()
+            return DeleteGalleryImage(success=True, message="Image supprimée avec succès.")
+        except GalleryImage.DoesNotExist:
+            return DeleteGalleryImage(success=False, message="Image introuvable.")
+        
 
 class Mutation(graphene.ObjectType):
     upload_image = UploadImage.Field()
     set_primary_image = SetPrimaryImage.Field()
+    delete_gallery_image = DeleteGalleryImage.Field()
 
 
 gallery_schema = graphene.Schema(query=Query, mutation=Mutation)

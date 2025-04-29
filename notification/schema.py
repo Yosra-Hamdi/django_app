@@ -13,7 +13,7 @@ class Query(graphene.ObjectType):
     all_notifications = graphene.List(NotificationType, is_read=graphene.Boolean())
 
     def resolve_all_notifications(self, info, is_read=None):
-        queryset = Notification.objects.all()
+        queryset = Notification.objects.all().order_by('-created_at')
         if is_read is not None:
             queryset = queryset.filter(is_read=is_read)
         return queryset
