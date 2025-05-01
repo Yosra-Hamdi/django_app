@@ -1,5 +1,6 @@
 # orders/models.py
 
+from company.models import CompanyInfo
 from orders.models import Order
 from django.utils import timezone 
 from django.db import models
@@ -75,3 +76,21 @@ class DeliveryNote(models.Model):
         self.save()
         self.order.status = 'DELIVERED_PAID'
         self.order.save()
+    
+    @property
+    def company_info(self):
+        """Retourne les informations de l'entreprise"""
+        company = CompanyInfo.objects.first()
+        if not company:
+            return {
+                'name': '',
+                'address': '',
+                'phone': '',
+                'email': ''
+            }
+        return {
+            'name': company.name,
+            'address': str(company.address),
+            'phone': company.phone,
+            'email': company.email
+        }

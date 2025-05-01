@@ -2,6 +2,7 @@ from django.db import models
 from addresses.models import Address
 from authentification.models import User
 from customers.models import Customer
+from payments.constants import PAYMENT_METHOD_CHOICES
 from products.models import Product
 from stock.models import Stock
 from django.utils import timezone 
@@ -29,10 +30,7 @@ class Order(models.Model):
         ('CANCELLED', 'Annulée'),
         ('RETURNED', 'Retournée'),
     ]
-    PAYMENT_METHOD_CHOICES = [
-        ('CASH', 'Cash'),
-        ('CARD', 'Credit Card'),
-    ]
+   
 
     customer = models.ForeignKey("customers.Customer", related_name="orders", on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_orders')  # Utilisateur qui gère la commande (administrateur, employé)
@@ -40,7 +38,7 @@ class Order(models.Model):
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     creation_date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='UNCONFIRMED')
-    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='CASH')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES , default='CASH')
     delivery_address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, related_name='delivery_orders')
     billing_address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, related_name='billing_orders')
     stock_preleve = models.BooleanField(default=False)
@@ -51,6 +49,16 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order #{self.id} - Status: {self.get_status_display()}"
+    
+
+    def create_payment(self):
+        """Crée le paiement associé avec statut approprié"""
+        payment = self.payments.create(
+            amount=self.total_ttc,
+            payment_method=self.payment_method,
+            status='PAID' if self.payment_method == 'CASH' else 'PENDING'
+        )
+        return payment
     
     def calculate_totals(self):
         """Calcule tous les montants et les sauvegarde"""

@@ -12,9 +12,14 @@ from facture.models import Invoice
 from orders.models import Order
 
 class InvoiceType(DjangoObjectType):
+    company_info = graphene.JSONString()
+
     class Meta:
         model = Invoice
         fields = "__all__"
+    
+    def resolve_company_info(self, info):
+        return self.company_info
 
 class InvoiceQuery(graphene.ObjectType):
     invoice_by_order = graphene.Field(InvoiceType, order_id=graphene.ID(required=True))

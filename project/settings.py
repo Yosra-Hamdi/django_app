@@ -101,6 +101,10 @@ INSTALLED_APPS = [
    'devis',
    'facture',
    'deliveryNote',
+   'company',
+   'payments',
+   
+   
 
     
     

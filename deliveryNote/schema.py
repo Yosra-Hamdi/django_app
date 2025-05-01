@@ -1,4 +1,4 @@
-# orders/schema.py
+
 from datetime import datetime
 from graphene_django import DjangoObjectType
 import graphene
@@ -12,6 +12,7 @@ class DeliveryNoteType(DjangoObjectType):
     customer_info = graphene.JSONString()
     products_info = graphene.JSONString()
     payment_info = graphene.JSONString()
+    company_info = graphene.JSONString()
 
     class Meta:
         model = DeliveryNote
@@ -25,6 +26,8 @@ class DeliveryNoteType(DjangoObjectType):
 
     def resolve_payment_info(self, info):
         return self.payment_info
+    def resolve_company_info(self, info):  # 🔥 AJOUT ICI
+        return self.company_info
 
 
 class DeliveryNoteQuery(graphene.ObjectType):

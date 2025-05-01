@@ -3,7 +3,8 @@ import orders.schema  ,  customers.schema , stock.schema
 import products.schema , notification.schema , gallery.schema
 import authentification.schema,addresses.schema , categories.schema
 import stock_mvt.schema , deliveryNote.schema
-import facture.schema
+import facture.schema , devis.schema , company.schema
+import payments.schema
 
 class Query(
       orders.schema.Query,
@@ -18,6 +19,10 @@ class Query(
       stock_mvt.schema.StockQuery,
       deliveryNote.schema.DeliveryNoteQuery,
       facture.schema.InvoiceQuery,
+      devis.schema.Query,
+      company.schema.Query,
+      payments.schema.PaymentQuery,
+
       
 
       
@@ -37,6 +42,11 @@ class Mutation(
       customers.schema.Mutation,
       deliveryNote.schema.Mutation,
       facture.schema.Mutation,
+      devis.schema.Mutation,
+      company.schema.Mutation,
+      payments.schema.PaymentMutation,
+      
+      
 
 
      graphene.ObjectType):

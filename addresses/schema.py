@@ -2,22 +2,38 @@ import graphene
 from graphene_django.types import DjangoObjectType
 from .models import Address
 
-# Enumération des pays basée sur le modèle Django
-class CountryEnum(graphene.Enum):
-    TUNISIE = "Tunisie"
-    FRANCE = "France"
-    ALLEMAGNE = "Allemagne"
-    ITALIE = "Italie"
-    ESPAGNE = "Espagne"
-    ETATS_UNIS = "États-Unis"
-    CANADA = "Canada"
-    ROYAUME_UNI = "Royaume-Uni"
+# Enumération des gouvernorats
+class GovernorateEnum(graphene.Enum):
+    TUNIS = "Tunis"
+    ARIANA = "Ariana"
+    BEN_AROUS = "Ben Arous"
+    MANOUBA = "Manouba"
+    NABEUL = "Nabeul"
+    ZAGHOUAN = "Zaghouan"
+    BIZERTE = "Bizerte"
+    BEJA = "Béja"
+    JENDOUBA = "Jendouba"
+    KEF = "Kef"
+    SILIANA = "Siliana"
+    SOUSSE = "Sousse"
+    MONASTIR = "Monastir"
+    MAHDIA = "Mahdia"
+    KAIROUAN = "Kairouan"
+    KASSERINE = "Kasserine"
+    SIDI_BOUZID = "Sidi Bouzid"
+    SFAX = "Sfax"
+    GABES = "Gabès"
+    MEDENINE = "Medenine"
+    TATAOUINE = "Tataouine"
+    GAFSA = "Gafsa"
+    TOZEUR = "Tozeur"
+    KEBILI = "Kebili"
 
-# Définition du type GraphQL pour Address
+# Définition du type GraphQL
 class AddressType(DjangoObjectType):
     class Meta:
         model = Address
-        fields = ('id', 'street', 'city', 'postal_code', 'country')
+        fields = ('id', 'street', 'city', 'postal_code', 'governorate')
 
 # Mutation pour créer une adresse
 class CreateAddress(graphene.Mutation):
@@ -25,16 +41,16 @@ class CreateAddress(graphene.Mutation):
         street = graphene.String(required=True)
         city = graphene.String(required=True)
         postal_code = graphene.String(required=True)
-        country = CountryEnum(required=True)  # Utilisation de l'enum
+        governorate = GovernorateEnum(required=True)
 
     address = graphene.Field(AddressType)
 
-    def mutate(self, info, street, city, postal_code, country):
+    def mutate(self, info, street, city, postal_code, governorate):
         address = Address(
             street=street,
             city=city,
             postal_code=postal_code,
-            country=country.value # Conversion de l'énumération en string
+            governorate=governorate.value
         )
         address.save()
         return CreateAddress(address=address)
@@ -46,11 +62,11 @@ class UpdateAddress(graphene.Mutation):
         street = graphene.String()
         city = graphene.String()
         postal_code = graphene.String()
-        country = CountryEnum()  # Utilisation de l'enum
+        governorate = GovernorateEnum()
 
     address = graphene.Field(AddressType)
 
-    def mutate(self, info, id, street=None, city=None, postal_code=None, country=None):
+    def mutate(self, info, id, street=None, city=None, postal_code=None, governorate=None):
         address = Address.objects.get(pk=id)
         if street:
             address.street = street
@@ -58,8 +74,8 @@ class UpdateAddress(graphene.Mutation):
             address.city = city
         if postal_code:
             address.postal_code = postal_code
-        if country:
-            address.country=country.value  # Conversion de l'énumération en string
+        if governorate:
+            address.governorate = governorate.value
         address.save()
         return UpdateAddress(address=address)
 
@@ -75,7 +91,7 @@ class DeleteAddress(graphene.Mutation):
         address.delete()
         return DeleteAddress(success=True)
 
-# Définir les requêtes
+# Requêtes
 class Query(graphene.ObjectType):
     all_addresses = graphene.List(AddressType)
     address = graphene.Field(AddressType, id=graphene.ID(required=True))
@@ -86,11 +102,11 @@ class Query(graphene.ObjectType):
     def resolve_address(self, info, id):
         return Address.objects.get(pk=id)
 
-# Définir les mutations
+# Mutations
 class Mutation(graphene.ObjectType):
     create_address = CreateAddress.Field()
     update_address = UpdateAddress.Field()
     delete_address = DeleteAddress.Field()
 
-# Schéma principal
+# Schéma
 schema = graphene.Schema(query=Query, mutation=Mutation)

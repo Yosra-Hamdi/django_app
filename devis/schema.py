@@ -1,0 +1,111 @@
+from decimal import Decimal
+import graphene
+from graphene_django import DjangoObjectType
+from .models import Devis, LigneDevis
+
+class LigneDevisType(DjangoObjectType):
+    montant_ht = graphene.Float()
+    montant_tva = graphene.Float()
+
+    class Meta:
+        model = LigneDevis
+        fields = "__all__"
+
+    def resolve_montant_ht(self, info):
+        return float(Decimal(str(self.montant_ht)))
+
+    def resolve_montant_tva(self, info):
+        return float(Decimal(str(self.montant_tva)))
+    
+class DevisType(DjangoObjectType):
+    total_ht = graphene.Float()
+    total_tva = graphene.Float()
+    total_ttc = graphene.Float()
+    lignes = graphene.List(LigneDevisType)
+
+    class Meta:
+        model = Devis
+        fields = "__all__"
+
+    def resolve_total_ht(self, info):
+        return float(self.total_ht)
+
+    def resolve_total_tva(self, info):
+        return float(self.total_tva)
+
+    def resolve_total_ttc(self, info):
+        return float(self.total_ttc)
+
+    def resolve_lignes(self, info):
+        return self.lignes.all()
+
+class CreateLigneDevisInput(graphene.InputObjectType):
+    product_id = graphene.ID(required=True)
+   
+    quantite = graphene.Int(required=True)
+    prix_unitaire_ht = graphene.Decimal()
+    tva = graphene.Decimal()
+
+class CreateDevisInput(graphene.InputObjectType):
+    customer_id = graphene.ID(required=True)
+    date_validite = graphene.String(required=True)  # Format: "YYYY-MM-DD"
+    lignes = graphene.List(CreateLigneDevisInput, required=True)
+    remise = graphene.Decimal()
+    notes = graphene.String()
+
+class CreateDevis(graphene.Mutation):
+    class Arguments:
+        input = CreateDevisInput(required=True)
+
+    devis = graphene.Field(DevisType)
+
+    def mutate(self, info, input):
+        from datetime import datetime
+
+        # Générer une référence unique
+        last_devis = Devis.objects.order_by('-id').first()
+        ref_number = 1 if not last_devis else last_devis.id + 1
+        reference = f"DEV-{datetime.now().year}-{ref_number:03d}"
+
+        devis = Devis(
+            customer_id=input['customer_id'],
+            reference=reference,
+            date_validite=datetime.strptime(input['date_validite'], "%Y-%m-%d").date(),
+            remise=Decimal(str(input.get('remise', 0))),
+            notes=input.get('notes', ''),
+        )
+        devis.save()
+
+        for ligne_input in input['lignes']:
+            ligne = LigneDevis(
+                devis=devis,
+                product_id=ligne_input['product_id'],
+                quantite=ligne_input['quantite'],
+                tva=Decimal(str(ligne_input.get('tva', 20.0))),
+            )
+            
+            if 'prix_unitaire_ht' in ligne_input:
+                ligne.prix_unitaire_ht = Decimal(str(ligne_input['prix_unitaire_ht']))
+            
+            ligne.save()
+
+        return CreateDevis(devis=devis)
+
+class Query(graphene.ObjectType):
+    all_devis = graphene.List(DevisType)
+    devis_by_customer = graphene.List(DevisType, customer_id=graphene.ID(required=True))
+    devis_by_status = graphene.List(DevisType, status=graphene.String())
+
+    def resolve_all_devis(root, info):
+        return Devis.objects.select_related('customer').prefetch_related('lignes').all()
+
+    def resolve_devis_by_customer(root, info, customer_id):
+        return Devis.objects.filter(customer_id=customer_id)
+
+    def resolve_devis_by_status(root, info, status):
+        return Devis.objects.filter(status=status)
+
+class Mutation(graphene.ObjectType):
+    create_devis = CreateDevis.Field()
+
+schema = graphene.Schema(query=Query, mutation=Mutation)

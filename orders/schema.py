@@ -4,6 +4,7 @@ from graphene import Decimal
 from addresses.schema import AddressType
 from authentification.models import User
 from customers.models import Customer
+from payments.schema import PaymentType
 from products.models import Product
 from addresses.models import Address
 from .models import Order, OrderProduct
@@ -55,6 +56,8 @@ class OrderType(DjangoObjectType):
     total_vat = graphene.Float()
     total_ttc = graphene.Float()
     order_number = graphene.String()
+    payments = graphene.List(PaymentType)  # Ajout des paiements associés
+
 
     class Meta:
         model = Order
@@ -71,6 +74,10 @@ class OrderType(DjangoObjectType):
 
     def resolve_order_number(self, info):
         return self.generate_order_number()
+    
+    def resolve_payments(self, info):
+        return self.payments.all()
+
 
 # Requêtes GraphQL
 class Query(graphene.ObjectType):
@@ -101,10 +108,12 @@ class CreateOrder(graphene.Mutation):
         delivery_address_id = graphene.ID(required=True)
         billing_address_id = graphene.ID(required=False)
         user_id = graphene.ID(required=False)
+        create_payment = graphene.Boolean(required=False, default_value=True)
 
     order = graphene.Field(OrderType)
+    payment = graphene.Field(PaymentType)
 
-    def mutate(self, info, customer_id, products, payment_method, delivery_address_id, status=None, billing_address_id=None, user_id=None):
+    def mutate(self, info, customer_id, products, payment_method, delivery_address_id, status=None, billing_address_id=None, user_id=None ,  create_payment=True):
         try:
             customer = Customer.objects.get(pk=customer_id)
         except Customer.DoesNotExist:
@@ -158,6 +167,9 @@ class CreateOrder(graphene.Mutation):
             )
 
         order.calculate_totals()
+        if create_payment:
+            payment = order.create_payment()
+            return CreateOrder(order=order, payment=payment)
         return CreateOrder(order=order)
 
 # Mutation pour mettre à jour une commande
@@ -247,16 +259,22 @@ class UpdateOrderStatus(graphene.Mutation):
     class Arguments:
         order_id = graphene.ID(required=True)
         status = StatusEnum(required=True)
+        update_payment_status = graphene.Boolean(required=False, default_value=True)  # Nouvel argument
 
     order = graphene.Field(OrderType)
 
-    def mutate(self, info, order_id, status):
+    def mutate(self, info, order_id, status, update_payment_status=True):
         try:
             order = Order.objects.get(pk=order_id)
             old_status = order.status
             order.status = status.value
             order.save()
-            order.update_stock_on_status_change(old_status, status.value)
+            
+            if update_payment_status:
+                order.update_stock_on_status_change(old_status, status.value)
+                for payment in order.payments.all():
+                    payment.update_status_based_on_order()
+            
             return UpdateOrderStatus(order=order)
         except Order.DoesNotExist:
             raise GraphQLError("Commande non trouvée.")
