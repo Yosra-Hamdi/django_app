@@ -31,6 +31,12 @@ class PaymentMethodEnum(graphene.Enum):
     CASH = "CASH"
     CARD = "CARD"
 
+# Ajoutez cet Enum avec les autres Enums
+class DeliveryMethodEnum(graphene.Enum):
+    PICKUP = "PICKUP"
+    DELIVERY = "DELIVERY"
+
+
 # Type GraphQL pour OrderProduct
 class OrderProductType(DjangoObjectType):
     total_ht = graphene.Float()
@@ -57,7 +63,7 @@ class OrderType(DjangoObjectType):
     total_ttc = graphene.Float()
     order_number = graphene.String()
     payments = graphene.List(PaymentType)  # Ajout des paiements associés
-
+    delivery_method = graphene.String()
 
     class Meta:
         model = Order
@@ -77,6 +83,9 @@ class OrderType(DjangoObjectType):
     
     def resolve_payments(self, info):
         return self.payments.all()
+    
+    def resolve_delivery_method(self, info):
+        return self.get_delivery_method_display()
 
 
 # Requêtes GraphQL
@@ -109,11 +118,12 @@ class CreateOrder(graphene.Mutation):
         billing_address_id = graphene.ID(required=False)
         user_id = graphene.ID(required=False)
         create_payment = graphene.Boolean(required=False, default_value=True)
+        delivery_method = DeliveryMethodEnum(required=True) 
 
     order = graphene.Field(OrderType)
     payment = graphene.Field(PaymentType)
 
-    def mutate(self, info, customer_id, products, payment_method, delivery_address_id, status=None, billing_address_id=None, user_id=None ,  create_payment=True):
+    def mutate(self, info, customer_id, products, payment_method,delivery_method, delivery_address_id, status=None, billing_address_id=None, user_id=None ,  create_payment=True):
         try:
             customer = Customer.objects.get(pk=customer_id)
         except Customer.DoesNotExist:
@@ -141,13 +151,21 @@ class CreateOrder(graphene.Mutation):
         if not products:
             raise GraphQLError("La liste des produits est vide.")
 
+        # Validation pour l'adresse de livraison
+        if delivery_method == 'DELIVERY' and not delivery_address_id:
+            raise GraphQLError("Une adresse de livraison est requise pour la livraison à domicile.")
+        
+        if delivery_method == 'PICKUP':
+            delivery_address_id = None  # Pas besoin d'adresse pour le retrait
+
         order = Order(
             customer=customer,
             status=status.value if status else 'UNCONFIRMED',
             payment_method=payment_method.value,
-            delivery_address=delivery_address,
+            delivery_address=delivery_address if delivery_address_id else None,
             billing_address=billing_address,
-            user=user
+            user=user,
+            delivery_method=delivery_method.value  # Nouveau champ
         )
         order.save()
 
@@ -182,10 +200,11 @@ class UpdateOrder(graphene.Mutation):
         delivery_address_id = graphene.ID(required=False)
         billing_address_id = graphene.ID(required=False)
         user_id = graphene.ID(required=False)
+        delivery_method = DeliveryMethodEnum(required=False)
 
     order = graphene.Field(OrderType)
 
-    def mutate(self, info, order_id, products=None, status=None, payment_method=None, 
+    def mutate(self, info, order_id, products=None, status=None, payment_method=None,delivery_method=None, 
                delivery_address_id=None, billing_address_id=None, user_id=None):
         try:
             order = Order.objects.get(pk=order_id)
@@ -217,6 +236,17 @@ class UpdateOrder(graphene.Mutation):
                 order.user = User.objects.get(pk=user_id)
             except User.DoesNotExist:
                 pass
+        
+        if delivery_method:
+            order.delivery_method = delivery_method.value
+            
+            # Validation cohérente
+            if delivery_method.value == 'DELIVERY' and not delivery_address_id:
+                if not order.delivery_address:
+                    raise GraphQLError("Une adresse de livraison est requise pour la livraison à domicile.")
+            
+            if delivery_method.value == 'PICKUP':
+                order.delivery_address = None
 
         if products is not None:
             order.products.all().delete()
@@ -259,26 +289,18 @@ class UpdateOrderStatus(graphene.Mutation):
     class Arguments:
         order_id = graphene.ID(required=True)
         status = StatusEnum(required=True)
-        update_payment_status = graphene.Boolean(required=False, default_value=True)  # Nouvel argument
 
     order = graphene.Field(OrderType)
 
-    def mutate(self, info, order_id, status, update_payment_status=True):
+    def mutate(self, info, order_id, status):
         try:
             order = Order.objects.get(pk=order_id)
-            old_status = order.status
             order.status = status.value
             order.save()
-            
-            if update_payment_status:
-                order.update_stock_on_status_change(old_status, status.value)
-                for payment in order.payments.all():
-                    payment.update_status_based_on_order()
-            
             return UpdateOrderStatus(order=order)
         except Order.DoesNotExist:
             raise GraphQLError("Commande non trouvée.")
-
+        
 # Définition des Mutations
 class Mutation(graphene.ObjectType):
     create_order = CreateOrder.Field()

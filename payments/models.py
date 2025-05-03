@@ -1,6 +1,9 @@
 from django.db import models
 from django.utils import timezone
 from .constants import PAYMENT_METHOD_CHOICES, PAYMENT_STATUS_CHOICES
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from orders.models import Order 
 
 class Payment(models.Model):
     order = models.ForeignKey("orders.Order", on_delete=models.CASCADE, related_name="payments")
@@ -23,8 +26,15 @@ class Payment(models.Model):
         verbose_name = 'Paiement'
         verbose_name_plural = 'Paiements'
 
-    def update_status_based_on_order(self):
+    def update_status_based_on_order(self, force_save=False):
         """Met à jour le statut du paiement en fonction du statut de la commande"""
+        if not hasattr(self, 'order') or self.order is None:
+            return False
+    
+        original_status = self.status
+        original_payment_date = self.payment_date
+        original_refund_date = self.refund_date
+    
         if self.order.status in ['PAID', 'DELIVERED_PAID']:
             self.status = 'PAID'
             if not self.payment_date:
@@ -37,20 +47,38 @@ class Payment(models.Model):
                 self.refund_date = timezone.now()
         elif self.order.status == 'PAYMENT_ERROR':
             self.status = 'FAILED'
-        # Pour les autres statuts, on ne change pas le statut du paiement
-        
-        self.save()
+    
+    # Ne sauvegarder que si nécessaire et si demandé explicitement
+        if force_save and (self.status != original_status or 
+                        self.payment_date != original_payment_date or
+                        self.refund_date != original_refund_date):
+            self.save(update_fields=['status', 'payment_date', 'refund_date'])
+            return True
+        return False
 
-    def save(self, *args, **kwargs):
-        """Surcharge de save pour la synchronisation automatique"""
-        is_new = not self.pk
+def save(self, *args, **kwargs):
+    """Surcharge de save pour la synchronisation automatique"""
+    is_new = not self.pk
     
-        # Pour un nouveau paiement en espèces, on met PENDING au lieu de PAID
-        if is_new and self.payment_method == 'CASH':
-            self.status = 'PENDING'  # Changé de 'PAID' à 'PENDING'
+    if is_new and self.payment_method == 'CASH':
+        self.status = 'PENDING'
     
-        super().save(*args, **kwargs)
+    # Sauvegarde initiale sans déclencher update_status_based_on_order
+    super().save(*args, **kwargs)
     
-        # Pour les paiements existants, on met à jour selon le statut de la commande
-        if not is_new:
-            self.update_status_based_on_order()
+    # Après la sauvegarde, mise à jour si nécessaire (sans créer de récursion)
+    if not is_new:
+        self.update_status_based_on_order(force_save=True)
+
+@receiver(post_save, sender=Order)
+def update_related_payments(sender, instance, **kwargs):
+    # Vérifie que c'est bien une sauvegarde normale (pas pendant la migration, etc.)
+    if kwargs.get('raw', False):
+        return
+    
+    # Met à jour tous les paiements liés
+    for payment in instance.payments.all().only('id', 'status', 'payment_date', 'refund_date'):
+        try:
+            payment.update_status_based_on_order(force_save=True)
+        except Exception as e:
+            logger.error(f"Error updating payment {payment.id}: {str(e)}")

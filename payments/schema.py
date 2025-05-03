@@ -28,6 +28,7 @@ class PaymentStatusEnum(graphene.Enum):
     PENDING = 'PENDING'
     PAID = 'PAID'
     FAILED = 'FAILED'
+    REFUNDED = 'REFUNDED'
 
 class PaymentInput(graphene.InputObjectType):
     order_id = graphene.ID(required=True)

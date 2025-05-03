@@ -12,6 +12,10 @@ from django.utils import timezone
 
 
 class Order(models.Model):
+    DELIVERY_METHOD_CHOICES = [
+    ('PICKUP', 'Retrait en magasin'),
+    ('DELIVERY', 'Livraison à domicile'),
+]
     STATUS_CHOICES = [
         ('UNCONFIRMED', 'Commande non confirmée'),
         ('CONFIRMED', 'Commande confirmée'),
@@ -45,7 +49,11 @@ class Order(models.Model):
     subtotal_ht = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_vat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_ttc = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-
+    delivery_method = models.CharField(
+        max_length=20, 
+        choices=DELIVERY_METHOD_CHOICES, 
+        default='DELIVERY'
+    )
 
     def __str__(self):
         return f"Order #{self.id} - Status: {self.get_status_display()}"
@@ -71,6 +79,13 @@ class Order(models.Model):
     def generate_order_number(self):
         date_part = timezone.now().strftime('%Y%m%d')  # Maintenant correct
         return f"CMD-{date_part}-{self.id:04d}"
+
+    def update_related_payments(self):
+        """Met à jour tous les paiements associés lorsque le statut de la commande change"""
+        for payment in self.payments.all():
+            payment.update_status_based_on_order()
+
+
 
 
     def update_stock_on_status_change(self, old_status, new_status):
