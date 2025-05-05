@@ -85,7 +85,7 @@ class OrderType(DjangoObjectType):
         return self.payments.all()
     
     def resolve_delivery_method(self, info):
-        return self.get_delivery_method_display()
+        return self.delivery_method
 
 
 # Requêtes GraphQL
