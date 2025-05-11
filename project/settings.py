@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'graphql_jwt.refresh_token.apps.RefreshTokenConfig',
+    'graphql_jwt',
     'graphene_django',
     'corsheaders',
     'products',

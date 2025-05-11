@@ -178,10 +178,81 @@ class DeleteDevis(graphene.Mutation):
         except Devis.DoesNotExist:
             return DeleteDevis(success=False, message="Devis non trouvé")
 
+class AddLigneDevis(graphene.Mutation):
+    class Arguments:
+        devis_id = graphene.ID(required=True)
+        product_id = graphene.ID(required=True)
+        quantite = graphene.Int(required=True)
+        prix_unitaire_ht = graphene.Decimal()
+        tva = graphene.Decimal()
+
+    ligne = graphene.Field(LigneDevisType)
+    devis = graphene.Field(DevisType)
+
+    def mutate(self, info, devis_id, product_id, quantite, prix_unitaire_ht=None, tva=None):
+        try:
+            devis = Devis.objects.get(pk=devis_id)
+            ligne = LigneDevis(
+                devis=devis,
+                product_id=product_id,
+                quantite=quantite,
+                tva=Decimal(str(tva)) if tva else Decimal('20.0'),
+            )
+            
+            if prix_unitaire_ht:
+                ligne.prix_unitaire_ht = Decimal(str(prix_unitaire_ht))
+            
+            ligne.save()
+            return AddLigneDevis(ligne=ligne, devis=devis)
+        except Devis.DoesNotExist:
+            raise Exception("Devis non trouvé")
+
+class UpdateLigneDevis(graphene.Mutation):
+    class Arguments:
+        ligne_id = graphene.ID(required=True)
+        quantite = graphene.Int()
+        prix_unitaire_ht = graphene.Decimal()
+        tva = graphene.Decimal()
+
+    ligne = graphene.Field(LigneDevisType)
+    devis = graphene.Field(DevisType)
+
+    def mutate(self, info, ligne_id, quantite=None, prix_unitaire_ht=None, tva=None):
+        try:
+            ligne = LigneDevis.objects.get(pk=ligne_id)
+            if quantite is not None:
+                ligne.quantite = quantite
+            if prix_unitaire_ht is not None:
+                ligne.prix_unitaire_ht = Decimal(str(prix_unitaire_ht))
+            if tva is not None:
+                ligne.tva = Decimal(str(tva))
+            
+            ligne.save()
+            return UpdateLigneDevis(ligne=ligne, devis=ligne.devis)
+        except LigneDevis.DoesNotExist:
+            raise Exception("Ligne de devis non trouvée")
+
+class RemoveLigneDevis(graphene.Mutation):
+    class Arguments:
+        ligne_id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+    devis = graphene.Field(DevisType)
+
+    def mutate(self, info, ligne_id):
+        try:
+            ligne = LigneDevis.objects.get(pk=ligne_id)
+            devis = ligne.devis
+            ligne.delete()
+            return RemoveLigneDevis(success=True, message="Ligne supprimée", devis=devis)
+        except LigneDevis.DoesNotExist:
+            return RemoveLigneDevis(success=False, message="Ligne non trouvée", devis=None)
 class Query(graphene.ObjectType):
     all_devis = graphene.List(DevisType)
     devis_by_customer = graphene.List(DevisType, customer_id=graphene.ID(required=True))
     devis_by_status = graphene.List(DevisType, status=graphene.String())
+    devis_by_id = graphene.Field(DevisType, id=graphene.ID(required=True))
 
     def resolve_all_devis(root, info):
         return Devis.objects.select_related('customer').prefetch_related('lignes').all()
@@ -191,10 +262,19 @@ class Query(graphene.ObjectType):
 
     def resolve_devis_by_status(root, info, status):
         return Devis.objects.filter(status=status)
+        
+    def resolve_devis_by_id(root, info, id):
+        try:
+            return Devis.objects.get(pk=id)
+        except Devis.DoesNotExist:
+            return None
 
 class Mutation(graphene.ObjectType):
     create_devis = CreateDevis.Field()
     update_devis = UpdateDevis.Field()
     delete_devis = DeleteDevis.Field()
+    add_ligne_devis = AddLigneDevis.Field()
+    update_ligne_devis = UpdateLigneDevis.Field()
+    remove_ligne_devis = RemoveLigneDevis.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

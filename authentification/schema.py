@@ -187,7 +187,15 @@ class Query(graphene.ObjectType):
     all_users = graphene.List(UserType)
     user_by_id = graphene.Field(UserType, id=graphene.Int(required=True))
     user_by_email = graphene.Field(UserType, email=graphene.String(required=True))
+    # Dans votre Query class, ajoutez:
+    me = graphene.Field(UserType)
 
+    def resolve_me(self, info):
+        user = info.context.user
+        if user.is_anonymous:
+            raise GraphQLError('Not authenticated')
+        return user
+    
     def resolve_all_users(self, info):
         return get_user_model().objects.all()
 

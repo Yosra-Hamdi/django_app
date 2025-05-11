@@ -1,3 +1,4 @@
+from venv import logger
 from django.db import models
 from django.utils import timezone
 from .constants import PAYMENT_METHOD_CHOICES, PAYMENT_STATUS_CHOICES
