@@ -22,6 +22,7 @@ class DevisType(DjangoObjectType):
     total_tva = graphene.Float()
     total_ttc = graphene.Float()
     lignes = graphene.List(LigneDevisType)
+    company_info = graphene.JSONString() 
 
     class Meta:
         model = Devis
@@ -38,6 +39,9 @@ class DevisType(DjangoObjectType):
 
     def resolve_lignes(self, info):
         return self.lignes.all()
+    
+    def resolve_company_info(self, info):
+        return self.company_info
 
 class CreateLigneDevisInput(graphene.InputObjectType):
     id = graphene.ID()  # Rendu optionnel

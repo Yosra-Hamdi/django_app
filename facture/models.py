@@ -77,18 +77,7 @@ class Invoice(models.Model):
         validators=[MinValueValidator(0)]
     )
     
-    # Statut
-    STATUS_CHOICES = [
-        ('DRAFT', 'Brouillon'),
-        ('SENT', 'Envoyée'),
-        ('PAID', 'Payée'),
-        ('CANCELLED', 'Annulée'),
-    ]
-    status = models.CharField(
-        max_length=20, 
-        choices=STATUS_CHOICES, 
-        default='DRAFT'
-    )
+   
     
     notes = models.TextField(blank=True, null=True)
 
@@ -130,28 +119,7 @@ class Invoice(models.Model):
             'logo': company.logo.url if company.logo else ''
         }
 
-    @classmethod
-    def get_drafts(cls):
-        return cls.objects.filter(status='DRAFT')
-
-    @classmethod
-    def get_sent(cls):
-        return cls.objects.filter(status='SENT')
-
-    @classmethod
-    def get_paid(cls):
-        return cls.objects.filter(status='PAID')
-
-    @classmethod
-    def get_cancelled(cls):
-        return cls.objects.filter(status='CANCELLED')
-
-    @classmethod
-    def get_by_status(cls, status):
-        if status in dict(cls.STATUS_CHOICES):
-            return cls.objects.filter(status=status)
-        return cls.objects.all()
-
+ 
 class InvoiceItem(models.Model):
     invoice = models.ForeignKey(
         Invoice, 

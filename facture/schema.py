@@ -5,7 +5,6 @@ from django.utils import timezone
 from graphql import GraphQLError
 from graphene import InputObjectType
 
-from deliveryNote.models import DeliveryNote
 from facture.models import Invoice, InvoiceItem
 from orders.models import Order
 from customers.models import Customer
@@ -51,11 +50,7 @@ class InvoiceInput(InputObjectType):
 class InvoiceQuery(graphene.ObjectType):
     invoice_by_order = graphene.Field(InvoiceType, order_id=graphene.ID(required=True))
     invoice_by_id = graphene.Field(InvoiceType, invoice_id=graphene.ID(required=True))
-    invoices = graphene.List(InvoiceType)
-    draft_invoices = graphene.List(InvoiceType)
-    sent_invoices = graphene.List(InvoiceType)
-    paid_invoices = graphene.List(InvoiceType)
-    cancelled_invoices = graphene.List(InvoiceType)
+    all_invoices = graphene.List(InvoiceType)
 
     def resolve_invoice_by_order(self, info, order_id):
         try:
@@ -69,19 +64,8 @@ class InvoiceQuery(graphene.ObjectType):
         except Invoice.DoesNotExist:
             return None
 
-    def resolve_invoices(self, info):
-        return Invoice.objects.exclude(status='DRAFT').order_by('-issue_date')
-
-    def resolve_draft_invoices(self, info):
-        return Invoice.objects.filter(status='DRAFT').order_by('-issue_date')
-    def resolve_sent_invoices(self, info):
-        return Invoice.objects.filter(status='SENT').order_by('-issue_date')
-
-    def resolve_paid_invoices(self, info):
-        return Invoice.objects.filter(status='PAID').order_by('-issue_date')
-
-    def resolve_cancelled_invoices(self, info):
-        return Invoice.objects.filter(status='CANCELLED').order_by('-issue_date')
+    def resolve_all_invoices(self, info):
+        return Invoice.objects.all().order_by('-issue_date')
 
 class CreateInvoiceFromOrder(graphene.Mutation):
     class Arguments:
@@ -120,7 +104,6 @@ class CreateInvoiceFromOrder(graphene.Mutation):
                     InvoiceItem.objects.create(
                         invoice=invoice,
                         product=order_product.product,
-                       
                         quantity=order_product.quantity,
                         unit_price_ht=order_product.unit_price_ht,
                         vat_rate=order_product.vat_rate,
@@ -163,11 +146,9 @@ class CreateManualInvoice(graphene.Mutation):
                 payment_method=invoice_data.get('payment_method', 'CASH'),
                 delivery_method=invoice_data.get('delivery_method', 'DELIVERY'),
                 notes=invoice_data.get('notes'),
-                status='DRAFT',
             )
             
             # Ajout des produits
-            
             for item_data in invoice_data['items']:
                 # Si c'est un produit existant, utilisez son prix
                 if item_data.get('product_id'):
@@ -178,14 +159,12 @@ class CreateManualInvoice(graphene.Mutation):
                     unit_price_ht = item_data.get('unit_price_ht', 0)
                     vat_rate = item_data.get('vat_rate', 0)
 
-
                 InvoiceItem.objects.create(
                     invoice=invoice,
                     product_id=item_data.get('product_id'),
-                    
                     quantity=item_data['quantity'],
                     unit_price_ht=unit_price_ht,
-                    vat_rate=item_data['vat_rate'],
+                    vat_rate=vat_rate,
                 )
             
             invoice.calculate_totals()
@@ -195,33 +174,35 @@ class CreateManualInvoice(graphene.Mutation):
         except Exception as e:
             raise GraphQLError(f"Erreur lors de la création de la facture: {str(e)}")
 
-class UpdateInvoiceStatus(graphene.Mutation):
+
+
+class DeleteInvoice(graphene.Mutation):
     class Arguments:
         invoice_id = graphene.ID(required=True)
-        status = graphene.String(required=True)
 
-    invoice = graphene.Field(InvoiceType)
+    success = graphene.Boolean()
+    message = graphene.String()
 
-    def mutate(self, info, invoice_id, status):
+    def mutate(self, info, invoice_id):
         try:
+            # Trouver la facture
             invoice = Invoice.objects.get(id=invoice_id)
             
-            if status not in dict(Invoice.STATUS_CHOICES).keys():
-                raise GraphQLError("Statut invalide")
-                
-            invoice.status = status
-            invoice.save()
+            # Supprimer la facture (les InvoiceItem associés seront supprimés automatiquement
+            # grâce à on_delete=CASCADE dans le modèle)
+            invoice.delete()
             
-            return UpdateInvoiceStatus(invoice=invoice)
+            return DeleteInvoice(success=True, message="Facture supprimée avec succès")
             
         except Invoice.DoesNotExist:
-            raise GraphQLError("Facture non trouvée")
+            return DeleteInvoice(success=False, message="Facture non trouvée")
         except Exception as e:
-            raise GraphQLError(f"Erreur: {str(e)}")
+            return DeleteInvoice(success=False, message=f"Erreur: {str(e)}")
+
 
 class Mutation(graphene.ObjectType):
     create_invoice_from_order = CreateInvoiceFromOrder.Field()
     create_manual_invoice = CreateManualInvoice.Field()
-    update_invoice_status = UpdateInvoiceStatus.Field()
+    delete_invoice = DeleteInvoice.Field()  # Ajouter cette ligne
 
 schema = graphene.Schema(query=InvoiceQuery, mutation=Mutation)

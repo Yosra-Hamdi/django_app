@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.db import models
 
 # Create your models here.
+from company.models import CompanyInfo
 from products.models import Product
 from customers.models import Customer
 
@@ -39,6 +40,27 @@ class Devis(models.Model):
         total_tva = Decimal(str(self.total_tva))
         return total_ht * (Decimal('1') - remise / Decimal('100')) + total_tva
 
+
+
+    @property
+    def company_info(self):
+        """Retourne les infos de l'entreprise sous forme de dictionnaire"""
+        company = CompanyInfo.objects.first()
+        if not company:
+            return {
+                'name': '',
+                'address': '',
+                'phone': '',
+                'email': '',
+                'logo': ''
+            }
+        return {
+            'name': company.name,
+            'address': str(company.address) if company.address else '',
+            'phone': company.phone,
+            'email': company.email,
+            'logo': company.logo.url if company.logo else ''
+        }
 class LigneDevis(models.Model):
     devis = models.ForeignKey(Devis, on_delete=models.CASCADE, related_name='lignes')
     product = models.ForeignKey(Product, on_delete=models.PROTECT, null=False)
