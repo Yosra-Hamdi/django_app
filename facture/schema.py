@@ -199,10 +199,84 @@ class DeleteInvoice(graphene.Mutation):
         except Exception as e:
             return DeleteInvoice(success=False, message=f"Erreur: {str(e)}")
 
+class UpdateInvoice(graphene.Mutation):
+    class Arguments:
+        invoice_id = graphene.ID(required=True)
+        invoice_data = InvoiceInput(required=True)
 
+    invoice = graphene.Field(InvoiceType)
+
+    def mutate(self, info, invoice_id, invoice_data):
+        try:
+            # Récupérer la facture existante
+            invoice = Invoice.objects.get(id=invoice_id)
+            
+            # Mettre à jour les champs de base
+            if 'customer_id' in invoice_data:
+                invoice.customer_id = invoice_data['customer_id']
+            
+            if 'billing_address_id' in invoice_data:
+                invoice.billing_address_id = invoice_data['billing_address_id']
+            
+            if 'delivery_address_id' in invoice_data:
+                invoice.delivery_address_id = invoice_data.get('delivery_address_id')
+            
+            if 'due_date' in invoice_data:
+                invoice.due_date = invoice_data['due_date']
+            
+            if 'payment_method' in invoice_data:
+                invoice.payment_method = invoice_data['payment_method']
+            
+            if 'delivery_method' in invoice_data:
+                invoice.delivery_method = invoice_data['delivery_method']
+            
+            if 'notes' in invoice_data:
+                invoice.notes = invoice_data.get('notes')
+            
+            invoice.save()
+            
+            # Gestion des items de facture
+            if 'items' in invoice_data:
+                # Supprimer les anciens items
+                invoice.items.all().delete()
+                
+                # Ajouter les nouveaux items
+                for item_data in invoice_data['items']:
+                    product = None
+                    unit_price_ht = item_data.get('unit_price_ht', 0)
+                    vat_rate = item_data.get('vat_rate', 0)
+                    
+                    if item_data.get('product_id'):
+                        product = Product.objects.get(id=item_data['product_id'])
+                        # Utiliser le prix du produit si non spécifié
+                        if not item_data.get('unit_price_ht'):
+                            unit_price_ht = product.price_excluding_vat
+                        if not item_data.get('vat_rate'):
+                            vat_rate = product.vat_rate
+                    
+                    InvoiceItem.objects.create(
+                        invoice=invoice,
+                        product=product,
+                        quantity=item_data['quantity'],
+                        unit_price_ht=unit_price_ht,
+                        vat_rate=vat_rate,
+                    )
+            
+            # Recalculer les totaux
+            invoice.calculate_totals()
+            
+            return UpdateInvoice(invoice=invoice)
+            
+        except Invoice.DoesNotExist:
+            raise GraphQLError("Facture non trouvée")
+        except Product.DoesNotExist:
+            raise GraphQLError("Produit non trouvé")
+        except Exception as e:
+            raise GraphQLError(f"Erreur lors de la mise à jour: {str(e)}")
 class Mutation(graphene.ObjectType):
     create_invoice_from_order = CreateInvoiceFromOrder.Field()
     create_manual_invoice = CreateManualInvoice.Field()
     delete_invoice = DeleteInvoice.Field()  # Ajouter cette ligne
+    update_invoice = UpdateInvoice.Field()  # Ajoutez cette ligne
 
 schema = graphene.Schema(query=InvoiceQuery, mutation=Mutation)

@@ -4,7 +4,7 @@ import products.schema , notification.schema , gallery.schema
 import authentification.schema,addresses.schema , categories.schema
 import stock_mvt.schema , deliveryNote.schema
 import facture.schema , devis.schema , company.schema
-import payments.schema
+import payments.schema , dashboard.schema
 
 class Query(
       orders.schema.Query,
@@ -22,6 +22,7 @@ class Query(
       devis.schema.Query,
       company.schema.Query,
       payments.schema.PaymentQuery,
+      dashboard.schema.Query,
 
       
 

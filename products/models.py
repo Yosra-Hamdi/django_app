@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Sum, F
 
 from authentification.models import User
 from categories.models import Category
@@ -59,6 +60,25 @@ class Product(models.Model):
             return main_img.gallery_image
         first_img = self.product_images.first()
         return first_img.gallery_image if first_img else None
+
+    @property
+    def total_units_sold(self):
+        """Retourne le nombre total d'unités vendues"""
+        return self.orderproduct_set.aggregate(
+            total=Sum('quantity')
+        )['total'] or 0
+
+    @property
+    def total_revenue(self):
+        """Retourne le chiffre d'affaires généré par le produit"""
+        return self.orderproduct_set.aggregate(
+            revenue=Sum(F('quantity') * F('unit_price_ht'))
+        )['revenue'] or 0
+
+
+
+
+
 
 
 class ProductHistory(models.Model):

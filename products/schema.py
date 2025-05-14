@@ -63,6 +63,49 @@ class ProductType(DjangoObjectType):
     def resolve_updated_at(self, info):
         return self.updated_at
 
+class QuickAddProductInput(graphene.InputObjectType):
+    name = graphene.String(required=True)
+    selling_price = graphene.Decimal(required=True)
+    barcode = graphene.String()
+    category_id = graphene.Int()
+    unit = graphene.String(default_value="kg")
+
+class QuickAddProduct(graphene.Mutation):
+    class Arguments:
+        input = QuickAddProductInput(required=True)
+
+    product = graphene.Field(ProductType)
+
+    @classmethod
+    def mutate(cls, root, info, input):
+        try:
+            # Valeurs par défaut pour un ajout rapide
+            defaults = {
+                'purchase_price': Decimal('0'),
+                'vat_rate': Decimal('0'),
+                'include_vat': False,
+                'unit': input.get('unit', 'kg')
+            }
+            
+            # Création du produit avec seulement les infos essentielles
+            product = Product(
+                name=input['name'],
+                selling_price=Decimal(input['selling_price']),
+                barcode=input.get('barcode'),
+                category_id=input.get('category_id'),
+                **defaults
+            )
+            product.save()
+
+            # Création du stock initial à 0
+            Stock.objects.create(product=product, quantity=0)
+
+            return QuickAddProduct(product=product)
+            
+        except Exception as e:
+            raise Exception(f"Erreur lors de l'ajout rapide: {str(e)}")
+        
+
 
 class Query(graphene.ObjectType):
     all_products = graphene.List(ProductType)
@@ -306,6 +349,8 @@ class DeleteAllProducts(graphene.Mutation):
 class Mutation(graphene.ObjectType):
  
     create_product = CreateProduct.Field()
+    quick_add_product = QuickAddProduct.Field()  # Nouvelle mutation
+
     update_product = UpdateProduct.Field()
     delete_product = DeleteProduct.Field()
     delete_all_products = DeleteAllProducts.Field()

@@ -71,6 +71,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://10.0.2.2:8000",
     "http://192.168.1.179:8000" ,
     "http://192.168.1.129:8000" ,
+     
 
 ]
 
@@ -104,6 +105,7 @@ INSTALLED_APPS = [
    'deliveryNote',
    'company',
    'payments',
+    'dashboard',
    
    
 
