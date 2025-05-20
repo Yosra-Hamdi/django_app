@@ -40,6 +40,17 @@ def get_dashboard_stats():
     
     # Commandes récentes
     stats['recent_orders'] = Order.objects.order_by('-creation_date')[:5]
-    
+
+
+        # Dans votre fonction get_dashboard_stats() ou resolve_dashboard_stats()
+    order_status_counts = Order.objects.values('status').annotate(
+        count=Count('id')
+    ).order_by('status')
+
+    stats['order_status_counts'] = {
+        item['status']: item['count'] 
+        for item in order_status_counts
+    }
+        
     
     return stats

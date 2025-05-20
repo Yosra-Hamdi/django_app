@@ -28,7 +28,9 @@ class ProductSalesType(graphene.ObjectType):
     units_sold = graphene.Int()
     revenue = graphene.Float()
 
-
+class OrderStatusCountType(graphene.ObjectType):
+    status = graphene.String()
+    count = graphene.Int()
 
 class DashboardStatsType(graphene.ObjectType):
     # Statistiques de base
@@ -36,6 +38,8 @@ class DashboardStatsType(graphene.ObjectType):
     total_customers = graphene.Int()
     total_products = graphene.Int()
     top_selling_products = graphene.List(ProductSalesType)
+    order_status_counts = graphene.List(OrderStatusCountType)
+
     
     # Statistiques récentes (7 jours)
     recent_orders_count = graphene.Int()
@@ -49,6 +53,10 @@ class DashboardStatsType(graphene.ObjectType):
     # Données pour graphiques
     sales_over_time = graphene.List(DailySalesType)  # 30 derniers jours
     weekly_comparison = graphene.List(graphene.Float)  # Comparaison semaine actuelle vs précédente
+
+
+
+
 
 class Query(graphene.ObjectType):
     dashboard_stats = graphene.Field(DashboardStatsType)

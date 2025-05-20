@@ -61,8 +61,8 @@ class CustomerInput(graphene.InputObjectType):
     id = graphene.ID()
     last_name = graphene.String(required=True)
     first_name = graphene.String(required=True)
-    email = graphene.String(required=True)
-    phone = graphene.String(required=True)
+    email = graphene.String()
+    phone = graphene.String()
     address_id = graphene.ID()
 
 # Mutations
@@ -81,12 +81,49 @@ class CreateCustomer(graphene.Mutation):
         customer = Customer(
             last_name=input.last_name,
             first_name=input.first_name,
-            email=input.email,
-            phone=input.phone,
+            email=input.email or "",
+            phone=input.phone or "",
             address=address
         )
         customer.save()
         return CreateCustomer(customer=customer)
+
+
+class SimpleCustomerInput(graphene.InputObjectType):
+    last_name = graphene.String(required=True)
+    first_name = graphene.String(required=True)
+    email = graphene.String()
+    phone = graphene.String()
+    address_id = graphene.ID()
+
+
+class CreateCustomerOnTheFly(graphene.Mutation):
+    class Arguments:
+        input = SimpleCustomerInput(required=True)
+
+    customer = graphene.Field(CustomerType)
+
+    @staticmethod
+    def mutate(root, info, input):
+        try:
+            # Validation des champs obligatoires
+            if not input.last_name or not input.first_name:
+                raise Exception("Le nom et prénom sont obligatoires")
+
+            customer = Customer(
+                last_name=input.last_name,
+                first_name=input.first_name,
+                phone=input.phone or None,  # Valeur par défaut vide si non fourni
+                email=input.email or None,    # Valeur par défaut vide si non fourni
+                address_id=input.address_id if input.address_id else None
+            )
+            customer.save()
+            return CreateCustomerOnTheFly(customer=customer)
+            
+        except Exception as e:
+            raise Exception(f"Erreur création client: {str(e)}")
+
+
 class UpdateCustomer(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
@@ -104,8 +141,8 @@ class UpdateCustomer(graphene.Mutation):
             
             customer.last_name = input.last_name
             customer.first_name = input.first_name
-            customer.email = input.email
-            customer.phone = input.phone
+            customer.email = input.email or customer.email  # Garde l'ancienne valeur si non fournie
+            customer.phone = input.phone or customer.phone  # Garde l'ancienne valeur si non fournie
             customer.address = address
             customer.save()
             return UpdateCustomer(customer=customer)
@@ -132,6 +169,7 @@ class Mutation(graphene.ObjectType):
     create_customer = CreateCustomer.Field()
     update_customer = UpdateCustomer.Field()
     delete_customer = DeleteCustomer.Field()
+    create_customer_on_the_fly = CreateCustomerOnTheFly.Field()
 
 # Final schema
 schema = graphene.Schema(query=Query, mutation=Mutation)

@@ -1,15 +1,17 @@
-from datetime import datetime, timedelta
+from decimal import Decimal
 from graphene_django import DjangoObjectType
 import graphene
 from django.utils import timezone
 from graphql import GraphQLError
 from graphene import InputObjectType
-
+import datetime
+from datetime import timedelta
 from facture.models import Invoice, InvoiceItem
 from orders.models import Order
 from customers.models import Customer
 from products.models import Product
 from addresses.models import Address
+from stock.models import Stock
 
 class InvoiceItemType(DjangoObjectType):
     class Meta:
@@ -30,11 +32,24 @@ class InvoiceType(DjangoObjectType):
     def resolve_items(self, info):
         return self.items.all()
 
+
+
+class CustomProductInput(graphene.InputObjectType):
+    """Input pour les produits créés à la volée"""
+    name = graphene.String(required=True)
+    selling_price = graphene.Decimal(required=True)
+    vat_rate = graphene.Decimal(default_value=Decimal('0.00'))
+    unit = graphene.String(default_value="kg") 
+    
+
 class InvoiceItemInput(InputObjectType):
-    product_id = graphene.ID(required=False)
+    product_id = graphene.ID(description="ID du produit existant (optionnel si custom_product)")
+    custom_product = graphene.Field(CustomProductInput, description="Produit à créer (optionnel si product_id)")
     quantity = graphene.Decimal(required=True)
-    unit_price_ht = graphene.Decimal(required=False)
-    vat_rate = graphene.Decimal(required=False)
+    unit_price_ht = graphene.Decimal(description="Prix unitaire HT (écrase le prix du produit si spécifié)")
+    vat_rate = graphene.Decimal(description="Taux TVA (écrase celui du produit si spécifié)")
+
+
 
 class InvoiceInput(InputObjectType):
     order_id = graphene.ID(required=False)
@@ -126,55 +141,85 @@ class CreateManualInvoice(graphene.Mutation):
     invoice = graphene.Field(InvoiceType)
 
     def mutate(self, info, invoice_data):
+        from django.db import transaction
+        
         try:
-            # Validation des données
-            if not invoice_data.get('customer_id'):
-                raise GraphQLError("Un client doit être spécifié")
-            
-            if not invoice_data.get('billing_address_id'):
-                raise GraphQLError("Une adresse de facturation doit être spécifiée")
-            
-            if not invoice_data.get('items') or len(invoice_data['items']) == 0:
-                raise GraphQLError("Au moins un produit doit être ajouté")
-            
-            # Création de la facture
-            invoice = Invoice.objects.create(
-                customer_id=invoice_data['customer_id'],
-                billing_address_id=invoice_data['billing_address_id'],
-                delivery_address_id=invoice_data.get('delivery_address_id'),
-                due_date=invoice_data['due_date'],
-                payment_method=invoice_data.get('payment_method', 'CASH'),
-                delivery_method=invoice_data.get('delivery_method', 'DELIVERY'),
-                notes=invoice_data.get('notes'),
-            )
-            
-            # Ajout des produits
-            for item_data in invoice_data['items']:
-                # Si c'est un produit existant, utilisez son prix
-                if item_data.get('product_id'):
-                    product = Product.objects.get(id=item_data['product_id'])
-                    unit_price_ht = product.price_excluding_vat
-                    vat_rate = product.vat_rate
-                else:
-                    unit_price_ht = item_data.get('unit_price_ht', 0)
-                    vat_rate = item_data.get('vat_rate', 0)
-
-                InvoiceItem.objects.create(
-                    invoice=invoice,
-                    product_id=item_data.get('product_id'),
-                    quantity=item_data['quantity'],
-                    unit_price_ht=unit_price_ht,
-                    vat_rate=vat_rate,
+            with transaction.atomic():
+                   # Validation des données
+                if not invoice_data.get('customer_id'):
+                    raise GraphQLError("Un client doit être spécifié")
+                
+                if not invoice_data.get('billing_address_id'):
+                    raise GraphQLError("Une adresse de facturation doit être spécifiée")
+                
+                if not invoice_data.get('items') or len(invoice_data['items']) == 0:
+                    raise GraphQLError("Au moins un produit doit être ajouté")
+                
+                # Conversion de la date
+                try:
+                    due_date = datetime.datetime.strptime(
+                        invoice_data['due_date'], 
+                        '%Y-%m-%d'
+                    ).date()
+                except ValueError:
+                    raise GraphQLError("Format de date invalide. Utilisez YYYY-MM-DD")
+                
+                # Création de la facture
+                invoice = Invoice.objects.create(
+                    customer_id=invoice_data['customer_id'],
+                    billing_address_id=invoice_data['billing_address_id'],
+                    delivery_address_id=invoice_data.get('delivery_address_id'),
+                    due_date=due_date,
+                    payment_method=invoice_data.get('payment_method', 'CASH'),
+                    delivery_method=invoice_data.get('delivery_method', 'DELIVERY'),
+                    notes=invoice_data.get('notes'),
                 )
-            
-            invoice.calculate_totals()
-            
-            return CreateManualInvoice(invoice=invoice)
-            
+                
+                # Ajout des produits
+                for item_data in invoice_data['items']:
+                    product_id = None
+                    description = ""
+                    
+                    # Gestion produit personnalisé
+                    if item_data.get('custom_product'):
+                        custom = item_data['custom_product']
+                        product = Product.objects.create(
+                            name=custom['name'],
+                            selling_price=Decimal(str(custom['selling_price'])),
+                            vat_rate=Decimal(str(custom.get('vat_rate', 0))),
+                            unit=custom.get('unit', 'kg'),
+                            purchase_price=0,
+                            include_vat=False
+                        )
+                        Stock.objects.create(product=product, quantity=0)
+                        product_id = product.id
+                        vat_rate = product.vat_rate
+                        description = custom['name']
+                    else:
+                        product_id = item_data.get('product_id')
+                        if product_id:
+                            product = Product.objects.get(id=product_id)
+                            vat_rate = product.vat_rate if not item_data.get('vat_rate') else Decimal(str(item_data['vat_rate']))
+                            description = product.name
+                        else:
+                            raise GraphQLError("Product ID or custom product required")
+
+                    # Création de la ligne de facture
+                    InvoiceItem.objects.create(
+                        invoice=invoice,
+                        product_id=product_id,
+                        description=description,
+                        quantity=Decimal(str(item_data['quantity'])),
+                        unit_price_ht=Decimal(str(item_data.get('unit_price_ht', product.selling_price if product_id else 0))),
+                        vat_rate=vat_rate,
+                    )
+                
+                invoice.calculate_totals()
+                
+                return CreateManualInvoice(invoice=invoice)
+                
         except Exception as e:
             raise GraphQLError(f"Erreur lors de la création de la facture: {str(e)}")
-
-
 
 class DeleteInvoice(graphene.Mutation):
     class Arguments:
@@ -207,72 +252,94 @@ class UpdateInvoice(graphene.Mutation):
     invoice = graphene.Field(InvoiceType)
 
     def mutate(self, info, invoice_id, invoice_data):
+        from django.db import transaction
+        
         try:
-            # Récupérer la facture existante
-            invoice = Invoice.objects.get(id=invoice_id)
-            
-            # Mettre à jour les champs de base
-            if 'customer_id' in invoice_data:
-                invoice.customer_id = invoice_data['customer_id']
-            
-            if 'billing_address_id' in invoice_data:
-                invoice.billing_address_id = invoice_data['billing_address_id']
-            
-            if 'delivery_address_id' in invoice_data:
-                invoice.delivery_address_id = invoice_data.get('delivery_address_id')
-            
-            if 'due_date' in invoice_data:
-                invoice.due_date = invoice_data['due_date']
-            
-            if 'payment_method' in invoice_data:
-                invoice.payment_method = invoice_data['payment_method']
-            
-            if 'delivery_method' in invoice_data:
-                invoice.delivery_method = invoice_data['delivery_method']
-            
-            if 'notes' in invoice_data:
-                invoice.notes = invoice_data.get('notes')
-            
-            invoice.save()
-            
-            # Gestion des items de facture
-            if 'items' in invoice_data:
-                # Supprimer les anciens items
-                invoice.items.all().delete()
+            with transaction.atomic():
+                # Récupérer la facture existante
+                invoice = Invoice.objects.get(id=invoice_id)
                 
-                # Ajouter les nouveaux items
-                for item_data in invoice_data['items']:
-                    product = None
-                    unit_price_ht = item_data.get('unit_price_ht', 0)
-                    vat_rate = item_data.get('vat_rate', 0)
+                # Mettre à jour les champs de base
+                if 'customer_id' in invoice_data:
+                    invoice.customer_id = invoice_data['customer_id']
+                
+                if 'billing_address_id' in invoice_data:
+                    invoice.billing_address_id = invoice_data['billing_address_id']
+                
+                if 'delivery_address_id' in invoice_data:
+                    invoice.delivery_address_id = invoice_data.get('delivery_address_id')
+                
+                if 'due_date' in invoice_data:
+                    invoice.due_date = invoice_data['due_date']
+                
+                if 'payment_method' in invoice_data:
+                    invoice.payment_method = invoice_data['payment_method']
+                
+                if 'delivery_method' in invoice_data:
+                    invoice.delivery_method = invoice_data['delivery_method']
+                
+                if 'notes' in invoice_data:
+                    invoice.notes = invoice_data.get('notes')
+                
+                invoice.save()
+                
+                # Gestion des items de facture
+                if 'items' in invoice_data:
+                    # Supprimer les anciens items
+                    invoice.items.all().delete()
                     
-                    if item_data.get('product_id'):
-                        product = Product.objects.get(id=item_data['product_id'])
-                        # Utiliser le prix du produit si non spécifié
-                        if not item_data.get('unit_price_ht'):
-                            unit_price_ht = product.price_excluding_vat
-                        if not item_data.get('vat_rate'):
+                    # Ajouter les nouveaux items
+                    for item_data in invoice_data['items']:
+                        product_id = None
+                        description = ""
+                        
+                        # Gestion produit personnalisé
+                        if item_data.get('custom_product'):
+                            custom = item_data['custom_product']
+                            product = Product.objects.create(
+                                name=custom['name'],
+                                selling_price=Decimal(str(custom['selling_price'])),
+                                vat_rate=Decimal(str(custom.get('vat_rate', 0))),
+                                unit=custom.get('unit', 'kg'),
+                                purchase_price=0,
+                                include_vat=False
+                            )
+                            Stock.objects.create(product=product, quantity=0)
+                            product_id = product.id
                             vat_rate = product.vat_rate
-                    
-                    InvoiceItem.objects.create(
-                        invoice=invoice,
-                        product=product,
-                        quantity=item_data['quantity'],
-                        unit_price_ht=unit_price_ht,
-                        vat_rate=vat_rate,
-                    )
-            
-            # Recalculer les totaux
-            invoice.calculate_totals()
-            
-            return UpdateInvoice(invoice=invoice)
-            
+                            description = custom['name']
+                        else:
+                            product_id = item_data.get('product_id')
+                            if product_id:
+                                product = Product.objects.get(id=product_id)
+                                vat_rate = product.vat_rate if not item_data.get('vat_rate') else Decimal(str(item_data['vat_rate']))
+                                description = product.name
+                            else:
+                                raise GraphQLError("Product ID or custom product required")
+
+                        # Création de la ligne de facture
+                        InvoiceItem.objects.create(
+                            invoice=invoice,
+                            product_id=product_id,
+                            description=description,
+                            quantity=Decimal(str(item_data['quantity'])),
+                            unit_price_ht=Decimal(str(item_data.get('unit_price_ht', product.selling_price if product_id else 0))),
+                            vat_rate=vat_rate,
+                        )
+                
+                # Recalculer les totaux
+                invoice.calculate_totals()
+                
+                return UpdateInvoice(invoice=invoice)
+                
         except Invoice.DoesNotExist:
             raise GraphQLError("Facture non trouvée")
         except Product.DoesNotExist:
             raise GraphQLError("Produit non trouvé")
         except Exception as e:
             raise GraphQLError(f"Erreur lors de la mise à jour: {str(e)}")
+
+
 class Mutation(graphene.ObjectType):
     create_invoice_from_order = CreateInvoiceFromOrder.Field()
     create_manual_invoice = CreateManualInvoice.Field()

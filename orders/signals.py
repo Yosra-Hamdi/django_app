@@ -29,8 +29,19 @@ def envoyer_notification_commande(sender, instance, created, **kwargs):
                         
                     },
                     'data': {
+
+
+
+
+
+
+
+
+                        
                         'type': 'new_order',
                         'order_id': str(instance.id),
+                        'sound_url': settings.STATIC_URL + 'sounds/notification.mp3',
+                        'requireInteraction': True
                        
                     }
                 },

@@ -30,12 +30,7 @@ urlpatterns = [
     path('graphql/', csrf_exempt(GraphQLView.as_view(graphiql=True, schema=schema))),
     path('auth/', include('authentification.urls')),
     path('orders/', include('orders.urls')),  
-    re_path(r'^service-worker\.js$', TemplateView.as_view(
-        template_name='service-worker.js',
-        content_type='application/javascript',
-    )),    
-    
-    
+   
 
 ]
 if settings.DEBUG:

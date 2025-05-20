@@ -1,4 +1,6 @@
+from decimal import Decimal
 from django.db import models
+from django.forms import ValidationError
 from company.models import CompanyInfo
 from orders.models import Order
 from customers.models import Customer
@@ -7,6 +9,8 @@ from products.models import Product
 from addresses.models import Address
 from django.utils import timezone
 from django.core.validators import MinValueValidator
+import datetime
+from datetime import timedelta
 
 class Invoice(models.Model):
     # Pour les factures liées à une commande
@@ -21,7 +25,7 @@ class Invoice(models.Model):
     # Pour les factures manuelles
     invoice_number = models.CharField(max_length=50, unique=True)
     issue_date = models.DateField(auto_now_add=True)
-    due_date = models.DateField()
+    due_date = models.DateField() 
     
     # Informations client (peuvent venir de la commande ou être saisis manuellement)
     customer = models.ForeignKey(
@@ -80,6 +84,20 @@ class Invoice(models.Model):
    
     
     notes = models.TextField(blank=True, null=True)
+    def clean(self):
+        # Validation supplémentaire pour la date
+        if isinstance(self.due_date, str):
+            try:
+                self.due_date = datetime.datetime.strptime(self.due_date, '%Y-%m-%d').date()
+            except ValueError:
+                raise ValidationError("Format de date invalide. Utilisez YYYY-MM-DD")
+        
+        if self.due_date < datetime.date.today():
+            raise ValidationError("La date d'échéance ne peut pas être dans le passé")
+    
+    def save(self, *args, **kwargs):
+        self.clean()  # Appel de la validation avant sauvegarde
+        super().save(*args, **kwargs)
 
     def generate_invoice_number(self):
         date_part = timezone.now().strftime('%Y%m')
@@ -121,63 +139,36 @@ class Invoice(models.Model):
 
  
 class InvoiceItem(models.Model):
-    invoice = models.ForeignKey(
-        Invoice, 
-        on_delete=models.CASCADE, 
-        related_name='items'
-    )
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(
         Product, 
         on_delete=models.SET_NULL, 
-        null=True
-    )
-    
-    quantity = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2,
-        validators=[MinValueValidator(0)]
-    )
-    unit_price_ht = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2,
-        validators=[MinValueValidator(0)],
         null=True,
         blank=True
     )
-    vat_rate = models.DecimalField(
-        max_digits=5, 
-        decimal_places=2,
-        validators=[MinValueValidator(0)],
-          null=True,  # Rendre le champ nullable
-        blank=True
-    )
+    description =models.CharField(max_length=255, blank=True, default="")  # Pour produits personnalisés
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price_ht = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+
     
+    class Meta:
+        verbose_name = "Ligne de facture"
+        verbose_name_plural = "Lignes de facture"
+
     @property
     def total_ht(self):
         return self.unit_price_ht * self.quantity
         
     @property
     def vat_amount(self):
-        return self.total_ht * (self.vat_rate / 100)
+        return self.total_ht * (self.vat_rate / Decimal('100'))
         
     @property
     def total_ttc(self):
         return self.total_ht + self.vat_amount
     
-    def save(self, *args, **kwargs):
-        # Si c'est un produit, remplir automatiquement description, prix et TVA
+    def __str__(self):
         if self.product:
-           
-            if not self.unit_price_ht:
-                self.unit_price_ht = self.product.price_excluding_vat
-            if not self.vat_rate:
-                self.vat_rate = self.product.vat_rate
-        
-        # Valeurs par défaut si tout est vide
-        if not self.unit_price_ht:
-            self.unit_price_ht = 0
-        if not self.vat_rate:
-            self.vat_rate = 0
-        
-        super().save(*args, **kwargs)
-        self.invoice.calculate_totals()
+            return f"{self.product.name} x{self.quantity}"
+        return f"{self.description} x{self.quantity}" if self.description else f"Ligne #{self.id}"

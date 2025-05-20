@@ -10,6 +10,7 @@ class Product(models.Model):
         ('kg','kilogram'),
         ('Liter', 'liter'),
         ('Meter', 'meter'),
+        
     ]
     name = models.CharField(max_length=100)
     barcode = models.CharField(max_length=50, unique=True, null=True, blank=True) # 
@@ -75,7 +76,17 @@ class Product(models.Model):
             revenue=Sum(F('quantity') * F('unit_price_ht'))
         )['revenue'] or 0
 
-
+    @classmethod
+    def create_quick_product(cls, name, selling_price, vat_rate=0, unit='kg'):
+        """Méthode helper pour créer un produit rapidement"""
+        return cls.objects.create(
+            name=name,
+            selling_price=selling_price,
+            vat_rate=vat_rate,
+            unit=unit,
+            purchase_price=0,
+            include_vat=False
+        )
 
 
 

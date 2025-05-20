@@ -63,29 +63,29 @@ class Devis(models.Model):
         }
 class LigneDevis(models.Model):
     devis = models.ForeignKey(Devis, on_delete=models.CASCADE, related_name='lignes')
-    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=False)
-    quantite = models.PositiveIntegerField() 
-    prix_unitaire_ht = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        null=True,  # Rendre le champ nullable
-        blank=True
-    )
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True)
+    description = models.CharField(max_length=255, blank=True, default="")
+    quantite = models.PositiveIntegerField(default=1)
+    prix_unitaire_ht = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    tva = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
 
-    tva = models.DecimalField(max_digits=5, decimal_places=2)  # TVA en %
-
-    @property
-    def prix_unitaire_effectif(self):
-        if self.prix_unitaire_ht is not None:
-            return Decimal(str(self.prix_unitaire_ht))
-        return Decimal(str(self.product.selling_price))
+    class Meta:
+        verbose_name = "Ligne de devis"
+        verbose_name_plural = "Lignes de devis"
 
     @property
     def montant_ht(self):
-        return Decimal(str(self.quantite)) * self.prix_unitaire_effectif
+        if self.prix_unitaire_ht is not None:
+            return Decimal(str(self.quantite)) * self.prix_unitaire_ht
+        elif self.product:
+            return Decimal(str(self.quantite)) * self.product.selling_price
+        return Decimal('0')
 
     @property
     def montant_tva(self):
         return self.montant_ht * (Decimal(str(self.tva)) / Decimal('100'))
+
     def __str__(self):
-        return f"{self.product.name} x{self.quantite}"
+        if self.product:
+            return f"{self.product.name} x{self.quantite} (HT: {self.montant_ht:.2f} TND)"
+        return f"{self.description} x{self.quantite}" if self.description else f"Ligne #{self.id}"

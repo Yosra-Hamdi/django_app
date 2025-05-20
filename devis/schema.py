@@ -1,6 +1,11 @@
+from datetime import datetime
 from decimal import Decimal
 import graphene
 from graphene_django import DjangoObjectType
+
+from customers.models import Customer
+from products.models import Product
+from stock.models import Stock
 from .models import Devis, LigneDevis
 
 class LigneDevisType(DjangoObjectType):
@@ -13,6 +18,7 @@ class LigneDevisType(DjangoObjectType):
 
     def resolve_montant_ht(self, info):
         return float(Decimal(str(self.montant_ht)))
+
 
     def resolve_montant_tva(self, info):
         return float(Decimal(str(self.montant_tva)))
@@ -43,19 +49,37 @@ class DevisType(DjangoObjectType):
     def resolve_company_info(self, info):
         return self.company_info
 
-class CreateLigneDevisInput(graphene.InputObjectType):
-    id = graphene.ID()  # Rendu optionnel
-    product_id = graphene.ID(required=True)
-    quantite = graphene.Int(required=True)
-    prix_unitaire_ht = graphene.Decimal()
-    tva = graphene.Decimal()
+class CustomProductInput(graphene.InputObjectType):
+    """Input pour les produits créés à la volée"""
+    name = graphene.String(required=True)
+    selling_price = graphene.Decimal(required=True)
+    vat_rate = graphene.Decimal(default_value=Decimal('0.00'))
+    unit = graphene.String(default_value="kg")
 
+
+class TempCustomerInput(graphene.InputObjectType):
+    last_name = graphene.String(required=True)
+    first_name = graphene.String(required=True)
+    phone = graphene.String(required=True)
+    email = graphene.String()
+
+#
+class CreateLigneDevisInput(graphene.InputObjectType):
+    product_id = graphene.ID(description="ID du produit existant (optionnel si custom_product)")
+    custom_product = graphene.Field(CustomProductInput, description="Produit à créer (optionnel si product_id)")
+    quantite = graphene.Int(required=True)
+    prix_unitaire_ht = graphene.Decimal(description="Prix unitaire HT (écrase le prix du produit si spécifié)")
+    tva = graphene.Decimal(description="Taux TVA (écrase celui du produit si spécifié)")
+
+#
 class CreateDevisInput(graphene.InputObjectType):
-    customer_id = graphene.ID(required=True)
+    customer_id = graphene.ID(description="ID d'un client existant (optionnel si temp_customer)")
+    temp_customer = graphene.Field(TempCustomerInput, description="Infos client temporaire")
     date_validite = graphene.String(required=True)
     lignes = graphene.List(CreateLigneDevisInput, required=True)
     remise = graphene.Decimal()
     notes = graphene.String()
+
 
 class CreateDevis(graphene.Mutation):
     class Arguments:
@@ -65,45 +89,88 @@ class CreateDevis(graphene.Mutation):
 
     def mutate(self, info, input):
         from datetime import datetime
+        from django.db import transaction
 
-        last_devis = Devis.objects.order_by('-id').first()
-        ref_number = 1 if not last_devis else last_devis.id + 1
-        reference = f"DEV-{datetime.now().year}-{ref_number:03d}"
+        try:
+            with transaction.atomic():
+                # Création du client si nécessaire
+                if input.get('temp_customer'):
+                    customer_data = input['temp_customer']
+                    customer = Customer.objects.create(
+                        last_name=customer_data['last_name'],
+                        first_name=customer_data['first_name'],
+                        phone=customer_data['phone'],
+                        email=customer_data.get('email', '')
+                    )
+                    customer_id = customer.id
+                else:
+                    customer_id = input['customer_id']
+                        # Génération référence
+                last_devis = Devis.objects.order_by('-id').first()
+                ref_number = 1 if not last_devis else last_devis.id + 1
+                reference = f"DEV-{datetime.now().year}-{ref_number:03d}"
 
-        devis = Devis(
-            customer_id=input['customer_id'],
-            reference=reference,
-            date_validite=datetime.strptime(input['date_validite'], "%Y-%m-%d").date(),
-            remise=Decimal(str(input.get('remise', 0))),
-            notes=input.get('notes', ''),
-        )
-        devis.save()
+                # Création devis
+                devis = Devis.objects.create(
+                    customer_id=customer_id,
+                    reference=reference,
+                    date_validite=datetime.strptime(input['date_validite'], "%Y-%m-%d").date(),
+                    remise=Decimal(str(input.get('remise', 0))),
+                    notes=input.get('notes', ''),
+                )
 
-        for ligne_input in input['lignes']:
-            ligne = LigneDevis(
-                devis=devis,
-                product_id=ligne_input['product_id'],
-                quantite=ligne_input['quantite'],
-                tva=Decimal(str(ligne_input.get('tva', 20.0))),
-            )
+                # Traitement des lignes
+                for ligne_input in input['lignes']:
+                    product_id = None
+                    tva = Decimal(str(ligne_input.get('tva', 20.0)))
+                    prix_unitaire = None
+
+                    # Gestion produit personnalisé
+                    if ligne_input.get('custom_product'):
+                        custom = ligne_input['custom_product']
+                        product = Product.objects.create(
+                            name=custom['name'],
+                            selling_price=Decimal(str(custom['selling_price'])),
+                            vat_rate=tva,  # Utilise la TVA fournie ou 20% par défaut
+                            unit=custom.get('unit', 'kg'),
+                            purchase_price=0,
+                            include_vat=False
+                        )
+                        Stock.objects.create(product=product, quantity=0)
+                        product_id = product.id
+                    else:
+                        product_id = ligne_input['product_id']
+                        if not product_id:
+                            raise Exception("Product ID or custom product required")
+
+                    # Création ligne
+                    LigneDevis.objects.create(
+                        devis=devis,
+                        product_id=product_id,
+                        quantite=ligne_input['quantite'],
+                        tva=tva,
+                        prix_unitaire_ht=Decimal(str(ligne_input['prix_unitaire_ht'])) if 'prix_unitaire_ht' in ligne_input else None
+                    )
+
+                return CreateDevis(devis=devis)
+
+        except Exception as e:
+            raise Exception(f"Erreur création devis: {str(e)}")      
+
             
-            if 'prix_unitaire_ht' in ligne_input:
-                ligne.prix_unitaire_ht = Decimal(str(ligne_input['prix_unitaire_ht']))
-            
-            ligne.save()
-
-        return CreateDevis(devis=devis)
 
 class UpdateLigneDevisInput(graphene.InputObjectType):
     id = graphene.ID()  # Rendu optionnel pour nouvelles lignes
     product_id = graphene.ID()
+    custom_product = graphene.Field(CustomProductInput)  # Ajoutez cette ligne
     quantite = graphene.Int()
     prix_unitaire_ht = graphene.Decimal()
     tva = graphene.Decimal()
 
 class UpdateDevisInput(graphene.InputObjectType):
     id = graphene.ID(required=True)
-    customer_id = graphene.ID()
+    customer_id = graphene.ID(description="ID d'un client existant (optionnel si temp_customer)")
+    temp_customer = graphene.Field(TempCustomerInput, description="Infos client temporaire")
     date_validite = graphene.String()
     lignes = graphene.List(UpdateLigneDevisInput)
     remise = graphene.Decimal()
@@ -117,56 +184,95 @@ class UpdateDevis(graphene.Mutation):
     devis = graphene.Field(DevisType)
 
     def mutate(self, info, input):
-        from datetime import datetime
-        from decimal import Decimal
-        
+        from django.db import transaction
+
         try:
-            devis = Devis.objects.get(pk=input['id'])
+            with transaction.atomic():
+                devis = Devis.objects.select_for_update().get(pk=input['id'])
+                
+                # Gestion du client (nouveau ou existant)
+                if input.get('temp_customer'):
+                    customer_data = input['temp_customer']
+                    customer = Customer.objects.create(
+                        last_name=customer_data['last_name'],
+                        first_name=customer_data['first_name'],
+                        phone=customer_data['phone'],
+                        email=customer_data.get('email', '')
+                    )
+                    devis.customer_id = customer.id
+                    devis.save(update_fields=['customer_id'])
+                elif 'customer_id' in input:
+                    devis.customer_id = input['customer_id']
+                    devis.save(update_fields=['customer_id'])
+
+                # Mise à jour des autres champs de base
+                update_fields = []
+                if 'date_validite' in input:
+                    devis.date_validite = datetime.strptime(input['date_validite'], "%Y-%m-%d").date()
+                    update_fields.append('date_validite')
+                if 'remise' in input:
+                    devis.remise = Decimal(str(input['remise']))
+                    update_fields.append('remise')
+                if 'notes' in input:
+                    devis.notes = input['notes']
+                    update_fields.append('notes')
+                if 'status' in input:
+                    devis.status = input['status']
+                    update_fields.append('status')
+                
+                if update_fields:
+                    devis.save(update_fields=update_fields)
+
+                # Gestion des lignes (reste inchangé)
+                if 'lignes' in input:
+                    kept_ids = [l['id'] for l in input['lignes'] if l.get('id')]
+                    devis.lignes.exclude(id__in=kept_ids).delete()
+
+                    for ligne_input in input['lignes']:
+                        if ligne_input.get('id'):
+                            ligne = LigneDevis.objects.get(
+                                pk=ligne_input['id'],
+                                devis=devis
+                            )
+                            if 'product_id' in ligne_input:
+                                ligne.product_id = ligne_input['product_id']
+                            if 'quantite' in ligne_input:
+                                ligne.quantite = ligne_input['quantite']
+                            if 'tva' in ligne_input:
+                                ligne.tva = Decimal(str(ligne_input['tva']))
+                            if 'prix_unitaire_ht' in ligne_input:
+                                ligne.prix_unitaire_ht = Decimal(str(ligne_input['prix_unitaire_ht']))
+                            ligne.save()
+                        else:
+                            if ligne_input.get('custom_product'):
+                                custom = ligne_input['custom_product']
+                                product = Product.objects.create(
+                                    name=custom['name'],
+                                    selling_price=Decimal(str(custom['selling_price'])),
+                                    vat_rate=Decimal(str(custom.get('vat_rate', 20.0))),
+                                    unit=custom.get('unit', 'kg'),
+                                    purchase_price=0,
+                                    include_vat=False
+                                )
+                                Stock.objects.create(product=product, quantity=0)
+                                product_id = product.id
+                            else:
+                                product_id = ligne_input['product_id']
+                            
+                            LigneDevis.objects.create(
+                                devis=devis,
+                                product_id=product_id,
+                                quantite=ligne_input['quantite'],
+                                tva=Decimal(str(ligne_input.get('tva', 20.0))),
+                                prix_unitaire_ht=Decimal(str(ligne_input.get('prix_unitaire_ht'))) if 'prix_unitaire_ht' in ligne_input else None
+                            )
+
+                return UpdateDevis(devis=devis)
+
         except Devis.DoesNotExist:
             raise Exception("Devis non trouvé")
-
-        if 'customer_id' in input:
-            devis.customer_id = input['customer_id']
-        if 'date_validite' in input:
-            devis.date_validite = datetime.strptime(input['date_validite'], "%Y-%m-%d").date()
-        if 'remise' in input:
-            devis.remise = Decimal(str(input['remise']))
-        if 'notes' in input:
-            devis.notes = input['notes']
-        if 'status' in input:
-            devis.status = input['status']
-
-        devis.save()
-
-        if 'lignes' in input:
-            for ligne_input in input['lignes']:
-                if ligne_input.get('id'):
-                    try:
-                        ligne = LigneDevis.objects.get(pk=ligne_input['id'], devis=devis)
-                        if 'product_id' in ligne_input:
-                            ligne.product_id = ligne_input['product_id']
-                        if 'quantite' in ligne_input:
-                            ligne.quantite = ligne_input['quantite']
-                        if 'tva' in ligne_input:
-                            ligne.tva = Decimal(str(ligne_input['tva']))
-                        if 'prix_unitaire_ht' in ligne_input:
-                            ligne.prix_unitaire_ht = Decimal(str(ligne_input['prix_unitaire_ht']))
-                        ligne.save()
-                    except LigneDevis.DoesNotExist:
-                        raise Exception(f"Ligne de devis {ligne_input['id']} non trouvée")
-                else:
-                    ligne = LigneDevis(
-                        devis=devis,
-                        product_id=ligne_input['product_id'],
-                        quantite=ligne_input['quantite'],
-                        tva=Decimal(str(ligne_input.get('tva', 20.0))),
-                    )
-                    if 'prix_unitaire_ht' in ligne_input:
-                        ligne.prix_unitaire_ht = Decimal(str(ligne_input['prix_unitaire_ht']))
-                    ligne.save()
-
-        return UpdateDevis(devis=devis)
-
+        except Exception as e:
+            raise Exception(f"Erreur mise à jour devis: {str(e)}")
 class DeleteDevis(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
@@ -185,31 +291,25 @@ class DeleteDevis(graphene.Mutation):
 class AddLigneDevis(graphene.Mutation):
     class Arguments:
         devis_id = graphene.ID(required=True)
-        product_id = graphene.ID(required=True)
-        quantite = graphene.Int(required=True)
-        prix_unitaire_ht = graphene.Decimal()
-        tva = graphene.Decimal()
-
+        input = CreateLigneDevisInput(required=True)
+       
     ligne = graphene.Field(LigneDevisType)
-    devis = graphene.Field(DevisType)
+    
 
-    def mutate(self, info, devis_id, product_id, quantite, prix_unitaire_ht=None, tva=None):
-        try:
-            devis = Devis.objects.get(pk=devis_id)
-            ligne = LigneDevis(
-                devis=devis,
-                product_id=product_id,
-                quantite=quantite,
-                tva=Decimal(str(tva)) if tva else Decimal('20.0'),
-            )
+    def mutate(self, info, devis_id,input):
+        
+        devis = Devis.objects.get(id=devis_id)
+           
+        ligne = LigneDevis(
+            devis=devis,
+            product_id=input.get('product_id'),
             
-            if prix_unitaire_ht:
-                ligne.prix_unitaire_ht = Decimal(str(prix_unitaire_ht))
-            
-            ligne.save()
-            return AddLigneDevis(ligne=ligne, devis=devis)
-        except Devis.DoesNotExist:
-            raise Exception("Devis non trouvé")
+            quantite=input['quantite'],
+            prix_unitaire_ht=Decimal(str(input['prix_unitaire_ht'])),
+            tva=Decimal(str(input['tva']))
+        )
+        ligne.save()
+        return AddLigneDevis(ligne=ligne)
 
 class UpdateLigneDevis(graphene.Mutation):
     class Arguments:
