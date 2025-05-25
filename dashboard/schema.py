@@ -86,6 +86,15 @@ class Query(graphene.ObjectType):
             ).count(),
         })
 
+        order_status_counts = Order.objects.values('status').annotate(
+            count=Count('id')
+        ).order_by('status')
+
+        stats['order_status_counts'] = [
+            {'status': item['status'], 'count': item['count']}
+            for item in order_status_counts
+        ]
+
      
         
         # 3. Données détaillées
