@@ -4,7 +4,7 @@ import json
 import os
 
 def send_soketi_event(channel, event_name, data):
-    soketi_host = os.getenv('PUSHER_HOST', 'localhost')
+    soketi_host = os.getenv('PUSHER_HOST', 'soketi')
     soketi_port = os.getenv('PUSHER_PORT', '6001')
     app_id = os.getenv('PUSHER_APP_ID', 'mysoketiapp')
     secret = os.getenv('PUSHER_SECRET', 'mysoketisecret')
