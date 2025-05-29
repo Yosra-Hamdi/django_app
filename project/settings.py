@@ -174,17 +174,10 @@ WSGI_APPLICATION = 'project.wsgi.application'
 
 
 
-PUSHER_BEAMS_INSTANCE_ID = '578cdb56-625d-4b55-810a-71fb27bbef7b' 
-PUSHER_BEAMS_SECRET_KEY = '05CA0725529F00294B620579EF25F3C38A0C7E4E3243B019F0E7065DF2FD4628'  
+#PUSHER_BEAMS_INSTANCE_ID = '578cdb56-625d-4b55-810a-71fb27bbef7b' 
+#PUSHER_BEAMS_SECRET_KEY = '05CA0725529F00294B620579EF25F3C38A0C7E4E3243B019F0E7065DF2FD4628'  
 # Configuration Pusher/Soketi
-# settings.py
-#PUSHER_APP_ID = 'mysoketiapp'
-#PUSHER_KEY = 'mysoketikey'
-#PUSHER_SECRET = 'mysoketisecret'
-#PUSHER_CLUSTER = 'mt1'  # tu peux mettre n’importe quoi, pas utilisé ici
-#PUSHER_HOST = 'soketi'
-#PUSHER_PORT = 6001
-#PUSHER_SSL = False
+
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases

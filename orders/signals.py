@@ -1,11 +1,8 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.conf import settings
-
 from notification.models import Notification
 from .models import Order
-
-from .beams_config import beams_client
+from project.soketi_client import send_soketi_event
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,58 +12,25 @@ def envoyer_notification_commande(sender, instance, created, **kwargs):
     if not created:
         return
 
-    message = f"nouvelle commande a été passée #{instance.id}"
-    
+    message = f"Nouvelle commande #{instance.id}"
+
     try:
-       
-        response = beams_client.publish_to_interests(
-            interests=['new_orders'], 
-            publish_body={
-                'web': {
-                    'notification': {
-                        'title': 'Nouvelle commande',
-                        'body': message,
-                        
-                    },
-                    'data': {
-
-
-
-
-
-
-
-
-                        
-                        'type': 'new_order',
-                        'order_id': str(instance.id),
-                        'sound_url': settings.STATIC_URL + 'sounds/notification.mp3',
-                        'requireInteraction': True
-                       
-                    }
-                },
-                'fcm': {
-                    'notification': {
-                        'title': 'Nouvelle commande',
-                        'body': message,
-                        'sound': 'default'
-                    },
-                    'data': {
-                        'order_id': str(instance.id),
-                        'action': 'open_order_details'
-                    }
-                }
+        # Envoi à Soketi
+        send_soketi_event(
+            channel='new-orders',
+            event_name='new-order-event',
+            data={
+                'order_id': instance.id,
+                'message': message
             }
         )
-        logger.info(f"Notification envoyée à new_orders. ID: {response['publishId']}")
-        
+
+        # Notification DB (facultatif)
         Notification.objects.create(
-            
             title='Nouvelle commande',
             body=message,
-            order_id=str(instance.id)
-
+            order_id=instance.id
         )
 
     except Exception as e:
-        logger.error(f"Échec d'envoi à new_orders: {str(e)}", exc_info=True)
+        logger.error(f"Erreur d'envoi de notification : {str(e)}")
